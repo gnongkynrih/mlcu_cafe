@@ -61,20 +61,8 @@
             </div>
         </form>
 
-        <flux:modal.trigger name="edit-profile">
-    <flux:button>Edit profile</flux:button>
-</flux:modal.trigger>
 
-<flux:modal name="edit-profile" class="md:w-96">
-    <div class="space-y-6">
-        <div>
-            <flux:heading size="lg">Delete</flux:heading>
-            <flux:text class="mt-2">Are you sure you want to delete your account?
-        </div>
 
-       <flux:button type="submit" variant="danger">Yes</flux:button>
-       <flux:button type="submit" variant="ghost">No</flux:button>
-            </div>
-        </flux:modal>
+
     </div>
 </x-layouts::auth>
