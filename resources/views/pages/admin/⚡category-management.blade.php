@@ -95,6 +95,20 @@ new class extends Component
 
         $this->categories = Category::orderBy('sort_order', 'asc')->get();
     }
+
+    public function updateSortOrder($id, $sortOrder): void
+    {
+        // Only accept whole numbers 0 and up
+        if (! is_numeric($sortOrder) || (int) $sortOrder < 0) {
+            return;
+        }
+
+        $category = Category::findOrFail($id);
+        $category->sort_order = (int) $sortOrder;
+        $category->save();
+
+        $this->categories = Category::orderBy('sort_order', 'asc')->get();
+    }
 }
 ?>
 
@@ -145,7 +159,8 @@ new class extends Component
             {{-- Categories List --}}
             <div class="divide-y divide-slate-100">
                 @forelse ($categories as $index => $category)
-                    <div 
+                    <div
+                        wire:key="category-{{ $category->id }}"
                         x-data="{ hovered: false }"
                         @mouseenter="hovered = true"
                         @mouseleave="hovered = false"
@@ -170,8 +185,16 @@ new class extends Component
                         </div>
 
                         {{-- Sort Order --}}
-                        <div class="col-span-2 text-center">
-                            <flux:input type="number" wire:model.blur="category.{{ $index }}.sort_order" />
+                        <div class="col-span-2 flex justify-center">
+                            <flux:input
+                                type="number"
+                                min="0"
+                                size="sm"
+                                value="{{ $category->sort_order }}"
+                                wire:blur="updateSortOrder({{ $category->id }}, $event.target.value)"
+                                class="w-16"
+                                input:class="text-center"
+                            />
                         </div>
                         @php
                             $status = $category->is_active;
