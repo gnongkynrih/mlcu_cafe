@@ -2,6 +2,8 @@
 
 use Livewire\Component;
 use App\Models\Category;
+use Flux\Flux;
+use App\Services\CategoryService;
 
 new class extends Component
 {
@@ -9,8 +11,26 @@ new class extends Component
     public $name;
     public $description;
     public $showModal;
+    public $showDeleteConfirmModal;
     public $selectedCategoryId;
+    public $searchCategory;
+    public $selectedCategoryName;
 
+    // Services must NOT be public properties — Livewire cannot serialize them
+    protected function categoryService(): CategoryService
+    {
+        return app(CategoryService::class);
+    }
+
+    public function resetFrom(){
+        $this->name='';
+        $this->description='';
+        $this->showModal = false;
+        $this->showDeleteConfirmModal=false;
+        $this->selectedCategoryId = null;
+        $this->searchCategory='';
+        $this->selectedCategoryName='';
+    }
     public function rules(){
         return [
             'name' => 'required|string|max:25|min:3|unique:categories,name',
@@ -28,15 +48,21 @@ new class extends Component
     public function mount()
     {
         $this->showModal = false;
-        //select * from categories
-        // $this->categories = Category::all();
-
+        $this->showDeleteConfirmModal = false;
         //select * from categories sort by sort_order ascending
-        $this->categories = Category::orderBy('sort_order', 'asc')
+        $this->categories = $this->categoryService()->getAllCategories('sort_order');
+    }
+
+    //search for category
+    public function updatedSearchCategory(){
+        $this->categories = Category::where('name', 'like', '%'.$this->searchCategory.'%')
+            ->orderBy('sort_order', 'asc')
             ->get();
     }
     
+    
     public function create(){
+
         $this->selectedCategoryId = null;
         $this->name = '';
         $this->description = '';
@@ -54,11 +80,16 @@ new class extends Component
         ]);
         
         //reset the form
-        $this->name = '';
-        $this->description = '';
+        $this->resetFrom();
         
         //refresh the categories
-        $this->categories = Category::orderBy('sort_order', 'asc')->get();
+        $this->categories = $this->categoryService()->getAllCategories('sort_order');
+        Flux::toast(
+            duration:3000,
+            heading:'Save',
+            text:'Category saved successfully',
+            position:'top end'
+        );
     }
 
 
@@ -80,11 +111,9 @@ new class extends Component
         ]);
         
         //refresh the categories
-        $this->categories = Category::orderBy('sort_order', 'asc')->get();
+        $this->categories = $this->categoryService()->getAllCategories('sort_order');
         
-        //close the modal
-        $this->showModal = false;
-        $this->selectedCategoryId = null;
+        $this->resetFrom();
     }
     public function updateStatus($id): void
     {
@@ -93,7 +122,7 @@ new class extends Component
         $category->is_active = ! $category->is_active;
         $category->save();
 
-        $this->categories = Category::orderBy('sort_order', 'asc')->get();
+        $this->categories = $this->categoryService()->getAllCategories('sort_order');
     }
 
     public function updateSortOrder($id, $sortOrder): void
@@ -106,8 +135,26 @@ new class extends Component
         $category = Category::findOrFail($id);
         $category->sort_order = (int) $sortOrder;
         $category->save();
+        Flux::toast(
+            heading: 'Sort order updated successfully.',
+            text: 'The category has been reordered.',
+        );
 
-        $this->categories = Category::orderBy('sort_order', 'asc')->get();
+        $this->categories = $this->categoryService()->getAllCategories('sort_order');
+    }
+
+    public function showDeleteModal($id){
+        $this->selectedCategoryId = $id;
+        //search for the categroy
+        $cat = Category::findOrFail($id);
+        $this->selectedCategoryName = $cat->name;
+        $this->showDeleteConfirmModal = true;
+    }
+    public function deleteCategory(){
+        Category::findOrFail($this->selectedCategoryId)->delete();
+        Flux::toast($this->selectedCategoryName .' successfully deleted');
+        $this->categories = $this->categoryService()->getAllCategories('sort_order');
+        $this->resetFrom();
     }
 }
 ?>
@@ -138,8 +185,13 @@ new class extends Component
             </div>
         </div>
 
-       <div class="flex justify-end mb-2">
-       
+       <div class="flex justify-end mb-2 gap-4">
+            <flux:input 
+                wire:model.live.debounce.600ms="searchCategory"
+                icon="magnifying-glass" 
+                placeholder="Search categories" 
+                class="w-64 border rounded-md"
+            />
             <flux:button wire:click="create" variant="primary"class="bg-purple-700 text-white hover:bg-indigo-800" icon="plus">New Category</flux:button>
         </div>
         {{-- Main Card --}}
@@ -192,7 +244,7 @@ new class extends Component
                                 size="sm"
                                 value="{{ $category->sort_order }}"
                                 wire:blur="updateSortOrder({{ $category->id }}, $event.target.value)"
-                                class="w-16"
+                                class="w-16 border"
                                 input:class="text-center"
                             />
                         </div>
@@ -232,7 +284,7 @@ new class extends Component
                             
                             <flux:icon.pencil-square color="green" wire:click="show({{ $category->id }})" />
                             
-                            <flux:icon.trash color="red" />
+                            <flux:icon.trash color="red" wire:click="showDeleteModal({{ $category->id }})" />
                         </div>
                     </div>
                 @empty
@@ -249,7 +301,6 @@ new class extends Component
                 @endforelse
             </div>
         </div>
-
         {{-- Footer Note --}}
         <div class="mt-6 text-center text-sm text-slate-400">
             Categories are sorted by <span class="font-medium text-slate-500">sort order</span> ascending
@@ -273,6 +324,26 @@ new class extends Component
                     <flux:button type="submit" variant="primary">{{ $selectedCategoryId ? 'Update' : 'Save' }}</flux:button>
                 </div>
             </form>
+        </div>
+    </flux:modal>
+
+    <!-- //modal to delete -->
+    <flux:modal wire:model.self="showDeleteConfirmModal" name="delete-category" class="min-w-[22rem]">
+        <div class="space-y-6">
+            <div>
+                <flux:heading size="lg">Delete category?</flux:heading>
+                <flux:text class="mt-2">
+                    You're about to delete {{ $selectedCategoryName}}.<br>
+                    This action cannot be reversed.
+                </flux:text>
+            </div>
+            <div class="flex gap-2">
+                <flux:spacer />
+                <flux:modal.close>
+                    <flux:button variant="ghost">Cancel</flux:button>
+                </flux:modal.close>
+                <flux:button type="button" wire:click="deleteCategory" variant="danger">Yes</flux:button>
+            </div>
         </div>
     </flux:modal>
 </div>

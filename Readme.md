@@ -1,6 +1,10 @@
 after cloning the project you will need to run the command
 
+npm install
 composer install 
+after you've clone the project to download the latest code
+git pull origin main
+
 
 1. To run the server
   1. composer run dev. (from your project folder -- terminal)
@@ -64,3 +68,11 @@ TO RUN THE SEEDER
 1. we first create the livewire page/component
   1. php artisan make:livewire Page::admin.categoryManagement
 
+
+//TO USE TOAST
+To use the Toast component from Livewire, you must include it somewhere on the page; often in your layout file inside the body:
+eg
+<body>
+....
+ <flux:toast />
+</body>

@@ -4,7 +4,7 @@
         @include('partials.head')
     </head>
     <body>
-This is a sidebar
+        <flux:toast />
         {{ $slot }}
        
         @fluxScripts
