@@ -1,27 +1,52 @@
 <?php
 
+// Livewire lets us build interactive pages using only PHP — no JavaScript needed.
+// This file is a "single-file component": the PHP class AND the HTML view live together.
 use Livewire\Component;
 use App\Models\Category;
-use Flux\Flux;
-use App\Services\CategoryService;
+use Flux\Flux;          // Flux = UI component library (modals, inputs, toasts, etc.)
+use App\Services\CategoryService; // Our own helper class for database queries
 
+// Livewire components are classes that extend Livewire\Component
 new class extends Component
 {
-    public $categories= []; //to store the categories
-    public $name;
-    public $description;
-    public $showModal;
-    public $showDeleteConfirmModal;
-    public $selectedCategoryId;
-    public $searchCategory;
-    public $selectedCategoryName;
+    // ---------------------------------------------------------------------
+    // PUBLIC PROPERTIES — the "state" of this component.
+    //
+    // IMPORTANT CONCEPT: Livewire serializes (saves) every public property to
+    // JSON between requests, then restores them on the next request.
+    // This is called "dehydration" / "hydration" — it is how Livewire
+    // remembers data without a full page reload.
+    // Because of this, public properties can only hold simple types:
+    // strings, numbers, booleans, arrays, Collections and Models.
+    // ---------------------------------------------------------------------
+    public $categories= [];           // the list of categories shown in the table
+    public $name;                     // bound to the "Name" input in the modal
+    public $description;              // bound to the "Description" input
+    public $showModal;                // true = open the add/edit modal
+    public $showDeleteConfirmModal;   // true = open the delete confirmation modal
+    public $selectedCategoryId;       // id of the category being edited/deleted
+    public $searchCategory;           // bound to the search box
+    public $selectedCategoryName;     // name shown inside the delete modal
 
-    // Services must NOT be public properties — Livewire cannot serialize them
+    // ---------------------------------------------------------------------
+    // WHY IS THIS A protected METHOD and NOT a public property?
+    //
+    // Services (plain PHP classes) cannot be serialized by Livewire.
+    // If you do `public $categoryService;` Livewire will crash with:
+    //   "Property type not supported in Livewire"
+    //
+    // Instead, we create it fresh each time we need it via app(),
+    // which asks Laravel's service container to give us the class.
+    // app(CategoryService::class)  ===  new CategoryService()  (but managed)
+    // ---------------------------------------------------------------------
     protected function categoryService(): CategoryService
     {
         return app(CategoryService::class);
     }
 
+    // Small helper that clears the form and closes all modals.
+    // We call it after save / update / delete so the UI resets.
     public function resetFrom(){
         $this->name='';
         $this->description='';
@@ -31,12 +56,22 @@ new class extends Component
         $this->searchCategory='';
         $this->selectedCategoryName='';
     }
+
+    // ---------------------------------------------------------------------
+    // VALIDATION RULES — same rules you already know from Laravel requests.
+    // The keys ('name', 'description') must match public property names.
+    // 'unique:categories,name' means: the name must not already exist
+    // in the `name` column of the `categories` table.
+    // ---------------------------------------------------------------------
     public function rules(){
         return [
             'name' => 'required|string|max:25|min:3|unique:categories,name',
             'description' => 'nullable|string|max:255',
         ];
     }
+
+    // Custom messages: shown instead of Laravel's default error text.
+    // Format: 'property.rule' => 'Your message'
     public function messages(){
         return [
             'name.required' =>'Category Name is required',
@@ -44,7 +79,12 @@ new class extends Component
             'name.unique' =>'Category Name already exists',
         ];
     }
-    //mount is a lifecycle method that is called when the component is loaded
+
+    // ---------------------------------------------------------------------
+    // mount() — runs ONCE when the page/component first loads.
+    // Think of it like a constructor: use it to load initial data.
+    // Equivalent SQL: SELECT * FROM categories ORDER BY sort_order ASC
+    // ---------------------------------------------------------------------
     public function mount()
     {
         $this->showModal = false;
@@ -53,7 +93,15 @@ new class extends Component
         $this->categories = $this->categoryService()->getAllCategories('sort_order');
     }
 
-    //search for category
+    // ---------------------------------------------------------------------
+    // LIFECYCLE HOOK: "updated{PropertyName}()"
+    // Livewire calls this automatically EVERY TIME the $searchCategory
+    // property changes (because the input uses wire:model.live).
+    // So as the user types, this re-runs the search query.
+    // SQL equivalent: SELECT * FROM categories
+    //                 WHERE name LIKE '%keyword%'
+    //                 ORDER BY sort_order ASC
+    // ---------------------------------------------------------------------
     public function updatedSearchCategory(){
         $this->categories = Category::where('name', 'like', '%'.$this->searchCategory.'%')
             ->orderBy('sort_order', 'asc')
@@ -61,6 +109,9 @@ new class extends Component
     }
     
     
+    // Opens the modal in "create" mode.
+    // Clearing selectedCategoryId is how the form knows it should SAVE
+    // (insert new) instead of UPDATE — see the modal's wire:submit below.
     public function create(){
 
         $this->selectedCategoryId = null;
@@ -68,9 +119,12 @@ new class extends Component
         $this->description = '';
         $this->showModal = true;
     }
+
+    // Called when the modal form is submitted while creating.
     public function save(){
 
-        //validate the input
+        //validate the input — checks rules() above; on failure Livewire
+        //shows the error next to the input automatically
         $this->validate();
 
         //insert into categories () values ()
@@ -82,8 +136,10 @@ new class extends Component
         //reset the form
         $this->resetFrom();
         
-        //refresh the categories
+        //refresh the categories so the new row appears in the table
         $this->categories = $this->categoryService()->getAllCategories('sort_order');
+
+        // Flux::toast shows a small popup notification in the corner
         Flux::toast(
             duration:3000,
             heading:'Save',
@@ -93,7 +149,8 @@ new class extends Component
     }
 
 
-    //pass the id of the category
+    // Opens the modal in "edit" mode: load one category's data
+    // into the form fields so the user can modify it.
     public function show($id){
         $this->selectedCategoryId = $id;
         //select * from categories where id = $id
@@ -103,6 +160,7 @@ new class extends Component
         $this->showModal = true;
     }
 
+    // Called when the modal form is submitted while editing.
     public function update(){
         //selecting the category base on id and then update the data
         Category::where('id', $this->selectedCategoryId)->update([
@@ -115,16 +173,20 @@ new class extends Component
         
         $this->resetFrom();
     }
+
+    // Toggles the Active/Inactive switch.
+    // findOrFail - if the id does not exist, Laravel shows a 404 page
     public function updateStatus($id): void
     {
-        //findOrFail - if the id does not exist show 404 page
         $category = Category::findOrFail($id);
-        $category->is_active = ! $category->is_active;
+        $category->is_active = ! $category->is_active; // flip true<->false
         $category->save();
 
         $this->categories = $this->categoryService()->getAllCategories('sort_order');
     }
 
+    // Saves a new sort order when the user finishes editing the number
+    // input (triggered by wire:blur = when the input loses focus).
     public function updateSortOrder($id, $sortOrder): void
     {
         // Only accept whole numbers 0 and up
@@ -143,6 +205,7 @@ new class extends Component
         $this->categories = $this->categoryService()->getAllCategories('sort_order');
     }
 
+    // Opens the delete confirmation modal and remembers WHICH category.
     public function showDeleteModal($id){
         $this->selectedCategoryId = $id;
         //search for the categroy
@@ -150,6 +213,10 @@ new class extends Component
         $this->selectedCategoryName = $cat->name;
         $this->showDeleteConfirmModal = true;
     }
+
+    // Actually deletes the row after the user clicks "Yes".
+    // NOTE: Category model uses SoftDeletes — the row is only
+    // "marked" deleted (deleted_at column set), not really removed.
     public function deleteCategory(){
         Category::findOrFail($this->selectedCategoryId)->delete();
         Flux::toast($this->selectedCategoryName .' successfully deleted');
@@ -186,12 +253,18 @@ new class extends Component
         </div>
 
        <div class="flex justify-end mb-2 gap-4">
+            {{--
+                wire:model.live   = two-way binding to $searchCategory, sent on every keystroke
+                .debounce.600ms   = wait 600ms after the user STOPS typing before sending
+                                    the request (saves server calls while searching)
+            --}}
             <flux:input 
                 wire:model.live.debounce.600ms="searchCategory"
                 icon="magnifying-glass" 
                 placeholder="Search categories" 
                 class="w-64 border rounded-md"
             />
+            {{-- wire:click="create" calls the create() method in the class above --}}
             <flux:button wire:click="create" variant="primary"class="bg-purple-700 text-white hover:bg-indigo-800" icon="plus">New Category</flux:button>
         </div>
         {{-- Main Card --}}
@@ -210,7 +283,15 @@ new class extends Component
 
             {{-- Categories List --}}
             <div class="divide-y divide-slate-100">
+                {{-- @forelse = @foreach + @empty fallback when the list is empty --}}
                 @forelse ($categories as $index => $category)
+                    {{--
+                        wire:key = REQUIRED in Livewire loops. It gives each row a
+                        unique id so Livewire can correctly update/remove rows
+                        without mixing them up after re-rendering.
+                        x-data / @mouseenter = Alpine.js (included with Livewire) —
+                        pure client-side behaviour, no server request needed.
+                    --}}
                     <div
                         wire:key="category-{{ $category->id }}"
                         x-data="{ hovered: false }"
@@ -238,6 +319,14 @@ new class extends Component
 
                         {{-- Sort Order --}}
                         <div class="col-span-2 flex justify-center">
+                            {{--
+                                wire:blur = call updateSortOrder() when the user clicks
+                                away / tabs out of this input.
+                                $event.target.value = the current text inside the input,
+                                sent as the 2nd argument to the method.
+                                Note: we do NOT use wire:model here because the value
+                                is already stored in the database — we just save on blur.
+                            --}}
                             <flux:input
                                 type="number"
                                 min="0"
@@ -248,23 +337,31 @@ new class extends Component
                                 input:class="text-center"
                             />
                         </div>
-                        @php
-                            $status = $category->is_active;
-                            $statusClass = $category->is_active ? 'bg-emerald-100 text-slate-800' : 'bg-red-100 text-red-800';
-                            $statusText = $category->is_active ? 'Active' : 'Inactive';
-                            $statusDotClass = $category->is_active ? 'bg-emerald-500' : 'bg-red-300';
-                        @endphp
                         {{-- Status Badge --}}
                         
                         <div class="col-span-2 text-right">
+                            {{-- flux:field variant="inline" puts the label and the
+                                 control on one line instead of stacked vertically --}}
                             <flux:field variant="inline">
+                                {{--
+                                    @class = Blade helper for conditional CSS classes:
+                                    'class-name' => condition  (class applies when true)
+                                    The "!" at the end = Tailwind "important", needed
+                                    to override Flux's built-in colors.
+                                --}}
                                 <flux:label @class([
                                     'text-emerald-600!' => $category->is_active,
                                     'text-red-600!' => ! $category->is_active,
                                 ])>
-                                    {{ $statusText }}
+                                    {{-- Ternary operator: condition ? valueIfTrue : valueIfFalse --}}
+                                    {{ $category->is_active ? 'Active' : 'Inactive' }}
                                 </flux:label>
 
+                                {{--
+                                    :checked="..." = PHP expression (dynamic attribute)
+                                    data-checked:bg-* = CSS class applied only when the
+                                    switch has the data-checked attribute (on state)
+                                --}}
                                 <flux:switch
                                     wire:click="updateStatus({{ $category->id }})"
                                     :checked="$category->is_active"
@@ -273,15 +370,9 @@ new class extends Component
 
                                 <flux:error name="is_active" />
                             </flux:field>
-                            <!-- <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium {{ $statusClass }}">
-                                <span class="w-1.5 h-1.5 rounded-full {{ $statusDotClass }}">
-
-                                </span>
-                                 {{ $statusText }} 
-                            </span> -->
                         </div>
                         <div class="col-span-1 flex">
-                            
+                            {{-- Passing the row's id to the method: wire:click="show(3)" --}}
                             <flux:icon.pencil-square color="green" wire:click="show({{ $category->id }})" />
                             
                             <flux:icon.trash color="red" wire:click="showDeleteModal({{ $category->id }})" />
@@ -307,14 +398,26 @@ new class extends Component
         </div>
     </div>
 
-    <!-- Modal form -->
+    <!-- Modal form (used for BOTH create and edit) -->
+    {{--
+        wire:model.self = binds the modal open/close state to $showModal
+        Setting $showModal = true in PHP opens it; clicking outside closes it.
+    --}}
     <flux:modal wire:model.self="showModal" name="add-category" class="md:w-96 bg-white ">
         <div class="space-y-6 ">
             <div>
                 <flux:heading size="lg">New Categories</flux:heading>
                 <flux:text class="mt-2">Create a new category for your menu.</flux:text>
             </div>
+            {{--
+                ONE form handles create + edit:
+                - no category selected  -> wire:submit="save"   (insert)
+                - a category selected   -> wire:submit="update" (update row)
+                wire:submit works like a normal form submit but calls a Livewire
+                method instead of reloading the page.
+            --}}
             <form wire:submit="{{ $selectedCategoryId ? 'update' : 'save' }}">
+                {{-- wire:model (no .live) = value is sent only when form submits --}}
                 <flux:input wire:model="name" label="Name" placeholder="Category name" />
                 <flux:input wire:model="description" label="Description" placeholder="Category description" />
                 <div class="flex items-center justify-between mt-4">
@@ -327,7 +430,7 @@ new class extends Component
         </div>
     </flux:modal>
 
-    <!-- //modal to delete -->
+    <!-- //modal to delete — asks for confirmation before deleting -->
     <flux:modal wire:model.self="showDeleteConfirmModal" name="delete-category" class="min-w-[22rem]">
         <div class="space-y-6">
             <div>
@@ -340,7 +443,7 @@ new class extends Component
             <div class="flex gap-2">
                 <flux:spacer />
                 <flux:modal.close>
-                    <flux:button variant="ghost">Cancel</flux:button>
+                    <flux:button type="button" variant="ghost">Cancel</flux:button>
                 </flux:modal.close>
                 <flux:button type="button" wire:click="deleteCategory" variant="danger">Yes</flux:button>
             </div>
