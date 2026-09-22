@@ -17,7 +17,7 @@ new class extends Component
         @forelse($tables as $table)
             <flux:card size="sm" class="{{$table->status=='available' ? 'bg-emerald-300' : 'bg-indigo-300'}} hover:shadow-lg">
                 <flux:heading class="flex items-center gap-2">{{$table->name}} 
-                    <p class="rounded-full bg-purple-600 text-white ml-auto text-center p-3">4</p>
+                    <p class="rounded-full bg-purple-600 text-white ml-auto text-center p-3">{{$table->capacity}}</p>
                 </flux:heading>
                 <flux:text class="mt-2">{{$table->status}}</flux:text>
             </flux:card>
