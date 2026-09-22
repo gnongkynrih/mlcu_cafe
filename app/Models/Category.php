@@ -21,4 +21,10 @@ class Category extends Model
             'is_active' => 'boolean'
         ];
     }
+
+    //relationship with menu items
+    public function menuItems()
+    {
+        return $this->hasMany(MenuItem::class);
+    }
 }

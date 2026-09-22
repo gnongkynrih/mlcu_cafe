@@ -76,3 +76,16 @@ eg
 ....
  <flux:toast />
 </body>
+
+#ELOQUENT Relationships
+
+we define the relationships in the model class
+eg belongsTo(), hasMany()
+  eg in the Category model 
+ public function menuItems(){
+  return $this->hasMany(MenuItem::class);
+}
+eg in the MenuItem model
+public function category(){
+  return $this->belongsTo(Category::class);
+}
