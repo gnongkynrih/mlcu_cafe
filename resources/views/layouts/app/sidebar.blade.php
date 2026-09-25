@@ -38,7 +38,20 @@
                     <flux:menu.radio>Truly Delta</flux:menu.radio>
                 </flux:menu.radio.group>
                 <flux:menu.separator />
-                <flux:menu.item icon="arrow-right-start-on-rectangle">Logout</flux:menu.item>
+                {{--
+                    Logout must be a POST request, so we wrap the menu item in a
+                    form. as="button" type="submit" turns it into a real submit
+                    button — no wire:click needed (layouts aren't Livewire
+                    components, so wire: directives have nothing to call).
+                --}}
+                <form method="POST" action="{{ route('logout') }}" class="w-full">
+                    <flux:menu.item
+                        icon="arrow-right-start-on-rectangle"
+                        as="button"
+                        type="submit"
+                        class="w-full cursor-pointer"
+                    >Logout</flux:menu.item>
+                </form>
             </flux:menu>
         </flux:dropdown>
     </flux:sidebar>

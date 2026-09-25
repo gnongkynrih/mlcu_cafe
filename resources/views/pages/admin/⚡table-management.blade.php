@@ -2,14 +2,14 @@
 
 use Livewire\Component;
 use App\Models\CafeTable;
-
+use Flux\Flux;
 new class extends Component
 {
     public $tables;
     public $name;
     public $capacity;
     public $selectedTableid;
-
+    public $showDeleteConfirm = false;
     public function mount(){
         $this->tables = CafeTable::all();
     }
@@ -39,6 +39,19 @@ new class extends Component
         $this->name = $cafe->name; 
         $this->capacity =$cafe->capacity;
     }
+    
+    public function delete($id){
+        $this->selectedTableid = $id;
+        $this->showDeleteConfirm = true;
+
+    }
+    public function confirmDelete(){
+        CafeTable::findOrFail($this->selectedTableid)->delete();
+        Flux::toast('Table deleted successfully');
+        $this->selectedTableid = false;
+        $this->showDeleteConfirm = false;
+        $this->tables = CafeTable::all();
+    }
 };
 ?>
 
@@ -65,17 +78,23 @@ new class extends Component
 
         <div x-show="!open" x-transition.duration.300ms  class="grid grid-cols-3 md:grid-cols-4 gap-4">
             @forelse($tables as $table)
-                <flux:card size="sm" class="bg-indigo-400 hover:shadow-lg">
-                    <flux:heading class="flex items-center gap-2">{{$table->name}} 
+                <flux:card size="sm" class="bg-indigo-400 hover:shadow-lg hover:bg-indigo-600">
+                    <flux:heading class="flex items-center gap-2 text-white">{{$table->name}} 
                         <p class="rounded-full w-8 h-8 text-center {{$table->status=='available' ? 'bg-emerald-300' : 'bg-red-300'}} text-white ml-auto text-center p-1 md:p-2">{{$table->capacity}}</p>
                     </flux:heading>
                     <div class="flex justify-between items-center border-t border-gray-200 pt-2 mt-4">
-                            <flux:text>{{$table->status}}</flux:text>
-                            <flux:icon 
-                                @click="open = true" 
-                                wire:click="edit({{$table->id}})"  
-                                name="pencil" 
-                                class="w-4 h-4 bg-amber-400 text-white rounded-full p-1" />
+                            <flux:text class="text-white">{{$table->status}}</flux:text>
+                            <div class="flex gap-2">
+                                <flux:icon 
+                                wire:click="delete({{$table->id}})"  
+                                name="trash" 
+                                class="w-8 h-8 bg-red-400 text-white rounded-full p-1" />
+                                <flux:icon 
+                                    @click="open = true" 
+                                    wire:click="edit({{$table->id}})"  
+                                    name="pencil" 
+                                    class="w-8 h-8 bg-amber-400 text-white rounded-full p-1" />
+                            </div>
                     </div>
                 </flux:card>
             @empty
@@ -84,4 +103,22 @@ new class extends Component
         </div>
     </div>
     
+
+    <flux:modal wire:model.self="showDeleteConfirm" name="delete-profile" class="min-w-[22rem]">
+        <div class="space-y-6">
+            <div>
+                <flux:heading size="lg">Delete Table?</flux:heading>
+                <flux:text class="mt-2">
+                    Are you sure you want to delete the Table
+                </flux:text>
+            </div>
+            <div class="flex gap-2">
+                <flux:spacer />
+                <flux:modal.close>
+                    <flux:button variant="ghost">Cancel</flux:button>
+                </flux:modal.close>
+                <flux:button wire:click="confirmDelete()" type="button" variant="danger">Yes</flux:button>
+            </div>
+        </div>
+    </flux:modal>
 </div>
