@@ -17,8 +17,8 @@
         </flux:sidebar.header>
         <flux:sidebar.search placeholder="Search..." />
         <flux:sidebar.nav>
-            <flux:sidebar.item icon="home" href="#" current>Home</flux:sidebar.item>
-            
+            <flux:sidebar.item icon="home" href="#">Home</flux:sidebar.item>
+            <flux:sidebar.item icon="receipt-percent" href="{{route('select-table')}}" current>Take Order</flux:sidebar.item>
             <flux:sidebar.group expandable heading="Admin" class="grid">
                 <flux:sidebar.item href="{{route('category-management')}}">Category</flux:sidebar.item>
                 <flux:sidebar.item href="{{route('menu-management')}}">Menu</flux:sidebar.item>

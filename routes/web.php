@@ -10,6 +10,13 @@ Route::middleware(['auth'])->group(function(){
     Route::livewire('/menu-management','pages::admin.menu-item-management')->name('menu-management');
     Route::livewire('/table-management','pages::admin.table-management')->name('table-management');
 
+    Route::livewire('/take-order','pages::⚡take-order')->name('take-order');
+    Route::livewire('/select-table','pages::⚡select-table')->name('select-table');
+
+
+    Route::livewire('/cart','pages::⚡cart')->name('cart');
+    Route::livewire('/checkout','pages::⚡checkout')->name('checkout');
+    Route::livewire('/orders','pages::⚡orders')->name('orders');
 
      // POST (not GET) so a browser can't accidentally trigger logout
     // by visiting /logout — and so the session can be safely invalidated.
