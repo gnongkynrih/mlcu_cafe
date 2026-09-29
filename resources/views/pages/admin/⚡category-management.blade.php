@@ -226,188 +226,182 @@ new class extends Component
 }
 ?>
 
-<div class="min-h-screen bg-purple-50 py-10">
+<div class="mx-auto max-w-5xl space-y-6">
 
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-
-        {{-- Header --}}
-        <div class="mb-10">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="sm:text-lg text-indigo-700 md:text-3xl font-bold  tracking-tight border-l-16 border-indigo-500 rounded-lg shadow-lg bg-white p-2">
-                        Category Management
-                    </h1>
-                    <p class="mt-2 text-indigo-600">
-                        Manage and organize your categories with ease.
-                    </p>
-                </div>
-
-               
-                <div class="flex items-center gap-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-700">
-                    <span class="inline-flex items-center pl-3 py-1 ">
-                        {{ count($categories) }} 
-                    </span>
-                    <span class="hidden md:inline ml-1 pr-3">Categories</span>
-                </div>
+    {{-- Header --}}
+    <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <div class="flex items-center gap-3">
+                <flux:heading size="xl" level="1">Category Management</flux:heading>
+                <flux:badge color="amber" size="sm">{{ count($categories) }} {{ Str::plural('category', count($categories)) }}</flux:badge>
             </div>
+            <flux:text class="mt-1">Manage and organize your menu categories.</flux:text>
         </div>
 
-       <div class="flex justify-end mb-2 gap-4">
-            {{--
-                wire:model.live   = two-way binding to $searchCategory, sent on every keystroke
-                .debounce.600ms   = wait 600ms after the user STOPS typing before sending
-                                    the request (saves server calls while searching)
-            --}}
-            <flux:input 
-                wire:model.live.debounce.600ms="searchCategory"
-                icon="magnifying-glass" 
-                placeholder="Search categories" 
-                class="w-64 border rounded-md"
-            />
-            {{-- wire:click="create" calls the create() method in the class above --}}
-            <flux:button wire:click="create" variant="primary"class="bg-purple-700 text-white hover:bg-indigo-800" icon="plus">New Category</flux:button>
-        </div>
-        {{-- Main Card --}}
-        <div class="bg-white rounded-2xl shadow-md border border-r-red-200 overflow-hidden">
-            
-            {{-- Table Header --}}
-            <div class="px-6 py-4 border-b border-slate-100 bg-indigo-500">
-                <div class="grid grid-cols-12 gap-4 text-xs font-semibold  uppercase tracking-wider">
+        {{-- wire:click="create" calls the create() method in the class above --}}
+        <flux:button wire:click="create" variant="primary" icon="plus">New Category</flux:button>
+    </div>
+
+    {{-- Toolbar --}}
+    <div class="flex">
+        {{--
+            wire:model.live   = two-way binding to $searchCategory, sent on every keystroke
+            .debounce.600ms   = wait 600ms after the user STOPS typing before sending
+                                the request (saves server calls while searching)
+        --}}
+        <flux:input
+            wire:model.live.debounce.600ms="searchCategory"
+            icon="magnifying-glass"
+            placeholder="Search categories..."
+            clearable
+            class="w-full sm:max-w-xs"
+        />
+    </div>
+
+    {{-- Main Card --}}
+    <div class="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-xs dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="overflow-x-auto">
+            <div class="min-w-[640px]">
+
+                {{-- Table Header --}}
+                <div class="grid grid-cols-12 gap-4 border-b border-stone-200 bg-stone-50 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-stone-500 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-400">
                     <div class="col-span-1">#</div>
-                    <div class="col-span-6">Category Name</div>
+                    <div class="col-span-5">Category Name</div>
                     <div class="col-span-2 text-center">Sort Order</div>
-                    <div class="col-span-2 text-right">Status</div>
-                    <div class="col-span-1 text-center">Actions</div>
+                    <div class="col-span-2 text-center">Status</div>
+                    <div class="col-span-2 text-right">Actions</div>
                 </div>
-            </div>
 
-            {{-- Categories List --}}
-            <div class="divide-y divide-slate-100">
-                {{-- @forelse = @foreach + @empty fallback when the list is empty --}}
-                @forelse ($categories as $index => $category)
-                    {{--
-                        wire:key = REQUIRED in Livewire loops. It gives each row a
-                        unique id so Livewire can correctly update/remove rows
-                        without mixing them up after re-rendering.
-                        x-data / @mouseenter = Alpine.js (included with Livewire) —
-                        pure client-side behaviour, no server request needed.
-                    --}}
-                    <div
-                        wire:key="category-{{ $category->id }}"
-                        x-data="{ hovered: false }"
-                        @mouseenter="hovered = true"
-                        @mouseleave="hovered = false"
-                        class="grid grid-cols-12 gap-4 px-6 py-4 items-center transition-all duration-200"
-                        :class="hovered ? 'bg-slate-50' : 'bg-white'"
-                    >
-                        {{-- Index --}}
-                        <div class="col-span-1">
-                            <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-600 text-sm font-medium">
+                {{-- Categories List --}}
+                <div class="divide-y divide-stone-100 dark:divide-zinc-800">
+                    {{-- @forelse = @foreach + @empty fallback when the list is empty --}}
+                    @forelse ($categories as $index => $category)
+                        {{--
+                            wire:key = REQUIRED in Livewire loops. It gives each row a
+                            unique id so Livewire can correctly update/remove rows
+                            without mixing them up after re-rendering.
+                            x-data / @mouseenter = Alpine.js (included with Livewire) —
+                            pure client-side behaviour, no server request needed.
+                        --}}
+                        <div
+                            wire:key="category-{{ $category->id }}"
+                            x-data="{ hovered: false }"
+                            @mouseenter="hovered = true"
+                            @mouseleave="hovered = false"
+                            class="grid grid-cols-12 items-center gap-4 px-6 py-3 transition-colors duration-150"
+                            :class="hovered ? 'bg-amber-50/60 dark:bg-zinc-800/60' : ''"
+                        >
+                            {{-- Index --}}
+                            <div class="col-span-1 text-sm tabular-nums text-stone-400 dark:text-zinc-500">
                                 {{ $loop->iteration }}
-                            </span>
-                        </div>
+                            </div>
 
-                        {{-- Name --}}
-                        <div class="col-span-6">
-                            <div class="flex items-center gap-3">
-                                <div class="w-2 h-2 rounded-full bg-indigo-500"></div>
-                                <span class="font-medium text-slate-800">
-                                    {{ $category->name }}
-                                </span>
+                            {{-- Name --}}
+                            <div class="col-span-5 min-w-0">
+                                <p class="truncate font-medium text-stone-800 dark:text-zinc-100">{{ $category->name }}</p>
+                                @if ($category->description)
+                                    <p class="truncate text-xs text-stone-500 dark:text-zinc-400">{{ $category->description }}</p>
+                                @endif
+                            </div>
+
+                            {{-- Sort Order --}}
+                            <div class="col-span-2 flex justify-center">
+                                {{--
+                                    wire:blur = call updateSortOrder() when the user clicks
+                                    away / tabs out of this input.
+                                    $event.target.value = the current text inside the input,
+                                    sent as the 2nd argument to the method.
+                                    Note: we do NOT use wire:model here because the value
+                                    is already stored in the database — we just save on blur.
+                                --}}
+                                <flux:input
+                                    type="number"
+                                    min="0"
+                                    size="sm"
+                                    value="{{ $category->sort_order }}"
+                                    wire:blur="updateSortOrder({{ $category->id }}, $event.target.value)"
+                                    class="w-20"
+                                    input:class="text-center"
+                                />
+                            </div>
+
+                            {{-- Status --}}
+                            <div class="col-span-2 flex justify-center">
+                                {{-- flux:field variant="inline" puts the label and the
+                                     control on one line instead of stacked vertically --}}
+                                <flux:field variant="inline">
+                                    {{--
+                                        :checked="..." = PHP expression (dynamic attribute)
+                                        data-checked:bg-* = CSS class applied only when the
+                                        switch has the data-checked attribute (on state)
+                                    --}}
+                                    <flux:switch
+                                        wire:click="updateStatus({{ $category->id }})"
+                                        :checked="$category->is_active"
+                                        class="data-checked:bg-emerald-500! data-checked:border-emerald-500!"
+                                    />
+
+                                    {{--
+                                        @class = Blade helper for conditional CSS classes:
+                                        'class-name' => condition  (class applies when true)
+                                        The "!" at the end = Tailwind "important", needed
+                                        to override Flux's built-in colors.
+                                    --}}
+                                    <flux:label @class([
+                                        'w-14 text-xs!',
+                                        'text-emerald-600! dark:text-emerald-400!' => $category->is_active,
+                                        'text-stone-400! dark:text-zinc-500!' => ! $category->is_active,
+                                    ])>
+                                        {{-- Ternary operator: condition ? valueIfTrue : valueIfFalse --}}
+                                        {{ $category->is_active ? 'Active' : 'Inactive' }}
+                                    </flux:label>
+
+                                    <flux:error name="is_active" />
+                                </flux:field>
+                            </div>
+
+                            {{-- Actions --}}
+                            <div class="col-span-2 flex justify-end gap-1">
+                                {{-- Passing the row's id to the method: wire:click="show(3)" --}}
+                                <flux:tooltip content="Edit">
+                                    <flux:button size="sm" variant="ghost" icon="pencil-square" wire:click="show({{ $category->id }})" />
+                                </flux:tooltip>
+                                <flux:tooltip content="Delete">
+                                    <flux:button size="sm" variant="ghost" icon="trash" class="text-red-500! hover:bg-red-50! dark:hover:bg-red-500/10!" wire:click="showDeleteModal({{ $category->id }})" />
+                                </flux:tooltip>
                             </div>
                         </div>
-
-                        {{-- Sort Order --}}
-                        <div class="col-span-2 flex justify-center">
-                            {{--
-                                wire:blur = call updateSortOrder() when the user clicks
-                                away / tabs out of this input.
-                                $event.target.value = the current text inside the input,
-                                sent as the 2nd argument to the method.
-                                Note: we do NOT use wire:model here because the value
-                                is already stored in the database — we just save on blur.
-                            --}}
-                            <flux:input
-                                type="number"
-                                min="0"
-                                size="sm"
-                                value="{{ $category->sort_order }}"
-                                wire:blur="updateSortOrder({{ $category->id }}, $event.target.value)"
-                                class="w-16 border"
-                                input:class="text-center"
-                            />
+                    @empty
+                        {{-- Empty State --}}
+                        <div class="px-6 py-16 text-center">
+                            <div class="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-500/10">
+                                <flux:icon.tag class="size-7 text-amber-500" />
+                            </div>
+                            <flux:heading size="lg">No categories found</flux:heading>
+                            <flux:text class="mt-1">Get started by creating your first category.</flux:text>
+                            <flux:button wire:click="create" variant="primary" icon="plus" size="sm" class="mt-4">New Category</flux:button>
                         </div>
-                        {{-- Status Badge --}}
-                        
-                        <div class="col-span-2 text-right">
-                            {{-- flux:field variant="inline" puts the label and the
-                                 control on one line instead of stacked vertically --}}
-                            <flux:field variant="inline">
-                                {{--
-                                    @class = Blade helper for conditional CSS classes:
-                                    'class-name' => condition  (class applies when true)
-                                    The "!" at the end = Tailwind "important", needed
-                                    to override Flux's built-in colors.
-                                --}}
-                                <flux:label @class([
-                                    'text-emerald-600!' => $category->is_active,
-                                    'text-red-600!' => ! $category->is_active,
-                                ])>
-                                    {{-- Ternary operator: condition ? valueIfTrue : valueIfFalse --}}
-                                    {{ $category->is_active ? 'Active' : 'Inactive' }}
-                                </flux:label>
-
-                                {{--
-                                    :checked="..." = PHP expression (dynamic attribute)
-                                    data-checked:bg-* = CSS class applied only when the
-                                    switch has the data-checked attribute (on state)
-                                --}}
-                                <flux:switch
-                                    wire:click="updateStatus({{ $category->id }})"
-                                    :checked="$category->is_active"
-                                    class="bg-red-400! data-checked:bg-emerald-500! data-checked:border-emerald-500!"
-                                />
-
-                                <flux:error name="is_active" />
-                            </flux:field>
-                        </div>
-                        <div class="col-span-1 flex">
-                            {{-- Passing the row's id to the method: wire:click="show(3)" --}}
-                            <flux:icon.pencil-square color="green" wire:click="show({{ $category->id }})" />
-                            
-                            <flux:icon.trash color="red" wire:click="showDeleteModal({{ $category->id }})" />
-                        </div>
-                    </div>
-                @empty
-                    {{-- Empty State --}}
-                    <div class="px-6 py-16 text-center bg-red-100">
-                        <div class="mx-auto w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                            <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                            </svg>
-                        </div>
-                        <h3 class="text-lg font-medium text-slate-900 mb-4">No categories found</h3>
-                        <p class="text-slate-500">Get started by creating your first category.</p>
-                    </div>
-                @endforelse
+                    @endforelse
+                </div>
             </div>
         </div>
-        {{-- Footer Note --}}
-        <div class="mt-6 text-center text-sm text-slate-400">
-            Categories are sorted by <span class="font-medium text-slate-500">sort order</span> ascending
-        </div>
     </div>
+
+    {{-- Footer Note --}}
+    <flux:text class="text-center text-sm">
+        Categories are sorted by <span class="font-medium">sort order</span> ascending. Change a number and click away to save it.
+    </flux:text>
 
     <!-- Modal form (used for BOTH create and edit) -->
     {{--
         wire:model.self = binds the modal open/close state to $showModal
         Setting $showModal = true in PHP opens it; clicking outside closes it.
     --}}
-    <flux:modal wire:model.self="showModal" name="add-category" class="md:w-96 bg-white ">
-        <div class="space-y-6 ">
+    <flux:modal wire:model.self="showModal" name="add-category" class="w-full md:w-md">
+        <div class="space-y-6">
             <div>
-                <flux:heading size="lg">New Categories</flux:heading>
-                <flux:text class="mt-2">Create a new category for your menu.</flux:text>
+                <flux:heading size="lg">{{ $selectedCategoryId ? 'Edit Category' : 'New Category' }}</flux:heading>
+                <flux:text class="mt-2">{{ $selectedCategoryId ? 'Update the details of this category.' : 'Create a new category for your menu.' }}</flux:text>
             </div>
             {{--
                 ONE form handles create + edit:
@@ -416,11 +410,11 @@ new class extends Component
                 wire:submit works like a normal form submit but calls a Livewire
                 method instead of reloading the page.
             --}}
-            <form wire:submit="{{ $selectedCategoryId ? 'update' : 'save' }}">
+            <form wire:submit="{{ $selectedCategoryId ? 'update' : 'save' }}" class="space-y-4">
                 {{-- wire:model (no .live) = value is sent only when form submits --}}
-                <flux:input wire:model="name" label="Name" placeholder="Category name" />
-                <flux:input wire:model="description" label="Description" placeholder="Category description" />
-                <div class="flex items-center justify-between mt-4">
+                <flux:input wire:model="name" label="Name" placeholder="e.g. Hot Beverages" />
+                <flux:textarea wire:model="description" label="Description" placeholder="Short description (optional)" rows="3" />
+                <div class="flex justify-end gap-2 pt-2">
                     <flux:modal.close>
                         <flux:button type="button" variant="ghost">Cancel</flux:button>
                     </flux:modal.close>
@@ -436,7 +430,7 @@ new class extends Component
             <div>
                 <flux:heading size="lg">Delete category?</flux:heading>
                 <flux:text class="mt-2">
-                    You're about to delete {{ $selectedCategoryName}}.<br>
+                    You're about to delete <strong>{{ $selectedCategoryName }}</strong>.<br>
                     This action cannot be reversed.
                 </flux:text>
             </div>
@@ -445,7 +439,7 @@ new class extends Component
                 <flux:modal.close>
                     <flux:button type="button" variant="ghost">Cancel</flux:button>
                 </flux:modal.close>
-                <flux:button type="button" wire:click="deleteCategory" variant="danger">Yes</flux:button>
+                <flux:button type="button" wire:click="deleteCategory" variant="danger">Delete</flux:button>
             </div>
         </div>
     </flux:modal>

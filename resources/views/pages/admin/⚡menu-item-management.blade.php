@@ -4,11 +4,16 @@ use Livewire\Component;
 use App\Models\MenuItem;
 use App\Models\Category;
 use Livewire\WithPagination; // trait that makes pagination work with Livewire requests
+use Livewire\WithFileUploads; // trait that lets a component receive uploaded files
+use Illuminate\Support\Facades\Storage;
 
 new class extends Component
 {
     // Must use the trait so Livewire knows how to track the current page
     use WithPagination;
+
+    // Must use this trait so wire:model can be bound to a file input
+    use WithFileUploads;
 
     // UI-only state for now (save/update/delete logic comes later)
     public string $searchMenu = '';
@@ -27,12 +32,22 @@ new class extends Component
 
     public bool $is_available = true;
 
+    // The NEW image picked in the form. While the form is open, Livewire keeps
+    // the file in a temporary folder; it is only saved for real in save()/update().
+    public $image;
+
+    // Path of the image ALREADY saved for this item (used as a preview when editing)
+    public ?string $existingImage = null;
+
     public function rules(){
         return [
             'name' =>'required|string|min:3|max:30',
             'category_id' => 'required|integer',
             'description' => 'nullable|string',
-            'price' =>'required|numeric|min:1|max:800'
+            'price' =>'required|numeric|min:1|max:800',
+            // image = must be jpg, jpeg, png, bmp, gif, svg or webp
+            // max:2048 = size limit in kilobytes (2 MB)
+            'image' => 'nullable|image|max:2048',
         ];
     }
      public function messages(){
@@ -43,7 +58,9 @@ new class extends Component
             'price.required' =>'Price cannot be less than 3 and more than 800',
             'price.min' =>'Price cannot be less than 3 and more than 800',
             'price.max' =>'Price cannot be less than 3 and more than 800',
-            'category_id.required' => 'Category is required'
+            'category_id.required' => 'Category is required',
+            'image.image' => 'The file must be an image',
+            'image.max' => 'The image cannot be larger than 2 MB',
         ];
     }
 
@@ -91,6 +108,13 @@ new class extends Component
         $this->resetPage();
     }
 
+    // Runs as soon as a file is picked, so a wrong file type or a file
+    // that is too big shows an error straight away (before clicking Save)
+    public function updatedImage(): void
+    {
+        $this->validateOnly('image');
+    }
+
     // UI stubs — implement real logic later
     public function create(): void
     {
@@ -100,6 +124,8 @@ new class extends Component
         $this->price = '';
         $this->category_id = null;
         $this->is_available = true;
+        $this->image = null;
+        $this->existingImage = null;
         $this->showModal = true;
     }
 
@@ -114,6 +140,8 @@ new class extends Component
             $this->price = (string) $menu->price;
             $this->category_id = $menu->category_id;
             $this->is_available = (bool) $menu->is_available;
+            $this->image = null;
+            $this->existingImage = $menu->image;
             $this->showModal = true;
         }
     }
@@ -134,7 +162,11 @@ new class extends Component
             'name' =>$this->name,
             'category_id' => $this->category_id,
             'description' => $this->description,
-            'price' => $this->price
+            'price' => $this->price,
+            // store() moves the file into storage/app/public/menu-items and
+            // returns its path, e.g. "menu-items/aB3x....jpg". We save that path.
+            // ?-> = only call store() if an image was picked (otherwise null)
+            'image' => $this->image?->store('menu-items', 'public'),
         ]);
     }
 
@@ -148,6 +180,16 @@ new class extends Component
         $menuItem->price = $this->price;
         $menuItem->category_id = $this->category_id;
         $menuItem->description = $this->description;
+
+        // Only replace the image if the user picked a new one
+        if ($this->image) {
+            // delete the old file so unused images do not pile up
+            if ($menuItem->image) {
+                Storage::disk('public')->delete($menuItem->image);
+            }
+            $menuItem->image = $this->image->store('menu-items', 'public');
+        }
+
         $menuItem->save();
 
         // MenuItem::find($this->selectedMenuId)->update([
@@ -171,184 +213,156 @@ new class extends Component
 };
 ?>
 
-<div class="min-h-screen bg-purple-50 py-10">
+<div class="mx-auto max-w-6xl space-y-6">
 
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-
-        {{-- Header --}}
-        <div class="mb-10">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 class="sm:text-lg text-indigo-700 md:text-3xl font-bold tracking-tight border-l-16 border-indigo-500 rounded-lg shadow-lg bg-white p-2">
-                        Menu Item Management
-                    </h1>
-                    <p class="mt-2 text-indigo-600">
-                        Manage and organize your cafe menu items with ease.
-                    </p>
-                </div>
-
-                <div class="flex items-center gap-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-700">
-                    <span class="inline-flex items-center pl-3 py-1">
-                        {{ $menus->total() }}
-                    </span>
-                    <span class="hidden md:inline ml-1 pr-3">Menu Items</span>
-                </div>
+    {{-- Header --}}
+    <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <div class="flex items-center gap-3">
+                <flux:heading size="xl" level="1">Menu Item Management</flux:heading>
+                <flux:badge color="amber" size="sm">{{ $menus->total() }} {{ Str::plural('item', $menus->total()) }}</flux:badge>
             </div>
+            <flux:text class="mt-1">Manage and organize your cafe menu items.</flux:text>
         </div>
 
-        <div class="flex items-center mb-2 gap-4">
-            {{--
-                wire:model.live = two-way binding on every keystroke
-                .debounce.600ms = wait until user stops typing before searching
-            --}}
-            <flux:input
-                wire:model.live.debounce.600ms="searchMenu"
-                icon="magnifying-glass"
-                placeholder="Search menu items"
-                class="w-64 border rounded-md"
-            />
-            <flux:select wire:model.live="filterByCategory">
-                <flux:select.option value="">Filter by category</flux:select.option>
-                 @foreach($categories as $category)
-                        <flux:select.option  value="{{$category->id}}">{{$category->name}}</flux:select.option>
-                @endforeach
-            </flux:select>
-            <flux:button
-                wire:click="create"
-                variant="primary"
-                class="bg-purple-700 text-white hover:bg-indigo-800"
-                icon="plus"
-            >
-                New Menu Item
-            </flux:button>
-        </div>
+        <flux:button wire:click="create" variant="primary" icon="plus">New Menu Item</flux:button>
+    </div>
 
-        {{-- Main Card --}}
-        <div class="bg-white rounded-2xl shadow-md border border-r-red-200 overflow-hidden">
+    {{-- Toolbar: search + category filter --}}
+    <div class="flex flex-col gap-3 sm:flex-row">
+        {{--
+            wire:model.live = two-way binding on every keystroke
+            .debounce.600ms = wait until user stops typing before searching
+        --}}
+        <flux:input
+            wire:model.live.debounce.600ms="searchMenu"
+            icon="magnifying-glass"
+            placeholder="Search menu items..."
+            clearable
+            class="sm:max-w-xs"
+        />
+        <flux:select wire:model.live="filterByCategory" class="sm:max-w-56">
+            <flux:select.option value="">All categories</flux:select.option>
+            @foreach($categories as $category)
+                <flux:select.option value="{{ $category->id }}">{{ $category->name }}</flux:select.option>
+            @endforeach
+        </flux:select>
+    </div>
 
-            {{-- Table Header --}}
-            <div class="px-6 py-4 border-b border-slate-100 bg-indigo-500">
-                <div class="grid grid-cols-12 gap-4 text-xs font-semibold uppercase tracking-wider text-white">
+    {{-- Main Card --}}
+    <div class="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-xs dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="overflow-x-auto">
+            <div class="min-w-[720px]">
+
+                {{-- Table Header --}}
+                <div class="grid grid-cols-12 gap-4 border-b border-stone-200 bg-stone-50 px-6 py-3 text-xs font-semibold uppercase tracking-wider text-stone-500 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-400">
                     <div class="col-span-1">#</div>
-                    <div class="col-span-3">Name</div>
+                    <div class="col-span-4">Name</div>
                     <div class="col-span-2">Category</div>
                     <div class="col-span-2 text-right">Price</div>
-                    <div class="col-span-2 text-right">Status</div>
-                    <div class="col-span-2 text-center">Actions</div>
+                    <div class="col-span-2 text-center">Status</div>
+                    <div class="col-span-1 text-right">Actions</div>
                 </div>
-            </div>
 
-            {{-- Menu Items List --}}
-            <div class="divide-y divide-slate-100">
-                {{-- @forelse = @foreach + @empty fallback when the list is empty --}}
-                @forelse ($menus as $menu)
-                    {{--
-                        wire:key is REQUIRED in Livewire loops so rows update correctly.
-                        firstItem() + iteration = correct serial number across pages
-                        (page 2 starts at 11, not 1).
-                    --}}
-                    <div
-                        wire:key="menu-{{ $menu->id }}"
-                        x-data="{ hovered: false }"
-                        @mouseenter="hovered = true"
-                        @mouseleave="hovered = false"
-                        class="grid grid-cols-12 gap-4 px-6 py-4 items-center transition-all duration-200"
-                        :class="hovered ? 'bg-slate-50' : 'bg-white'"
-                    >
-                        {{-- Index (works correctly with pagination) --}}
-                        <div class="col-span-1">
-                            <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-600 text-sm font-medium">
+                {{-- Menu Items List --}}
+                <div class="divide-y divide-stone-100 dark:divide-zinc-800">
+                    {{-- @forelse = @foreach + @empty fallback when the list is empty --}}
+                    @forelse ($menus as $menu)
+                        {{--
+                            wire:key is REQUIRED in Livewire loops so rows update correctly.
+                            firstItem() + iteration = correct serial number across pages
+                            (page 2 starts at 11, not 1).
+                        --}}
+                        <div
+                            wire:key="menu-{{ $menu->id }}"
+                            x-data="{ hovered: false }"
+                            @mouseenter="hovered = true"
+                            @mouseleave="hovered = false"
+                            class="grid grid-cols-12 items-center gap-4 px-6 py-3 transition-colors duration-150"
+                            :class="hovered ? 'bg-amber-50/60 dark:bg-zinc-800/60' : ''"
+                        >
+                            {{-- Index (works correctly with pagination) --}}
+                            <div class="col-span-1 text-sm tabular-nums text-stone-400 dark:text-zinc-500">
                                 {{ $menus->firstItem() + $loop->index }}
-                            </span>
-                        </div>
+                            </div>
 
-                        {{-- Name --}}
-                        <div class="col-span-3">
-                            <div class="flex items-center gap-3">
-                                <div class="w-2 h-2 rounded-full bg-indigo-500"></div>
-                                <div>
-                                    <span class="font-medium text-slate-800 block">
-                                        {{ $menu->name }}
-                                    </span>
+                            {{-- Name --}}
+                            <div class="col-span-4 flex min-w-0 items-center gap-3">
+                                {{-- image_url comes from the imageUrl() accessor in the MenuItem model --}}
+                                @if ($menu->image_url)
+                                    <img src="{{ $menu->image_url }}" alt="{{ $menu->name }}" class="size-10 shrink-0 rounded-lg object-cover">
+                                @else
+                                    <div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-stone-100 text-stone-400 dark:bg-zinc-800 dark:text-zinc-500">
+                                        <flux:icon.photo variant="micro" />
+                                    </div>
+                                @endif
+                                <div class="min-w-0">
+                                    <p class="truncate font-medium text-stone-800 dark:text-zinc-100">{{ $menu->name }}</p>
                                     @if ($menu->description)
-                                        <span class="text-xs text-slate-400 line-clamp-1">
-                                            {{ $menu->description }}
-                                        </span>
+                                        <p class="truncate text-xs text-stone-500 dark:text-zinc-400">{{ $menu->description }}</p>
                                     @endif
                                 </div>
                             </div>
-                        </div>
 
-                        {{-- Category --}}
-                        <div class="col-span-2">
-                            <span class="inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium bg-slate-100 text-slate-700">
-                                {{ $menu->category?->name ?? '—' }}
-                            </span>
-                        </div>
+                            {{-- Category --}}
+                            <div class="col-span-2">
+                                <flux:badge size="sm" color="zinc">{{ $menu->category?->name ?? '—' }}</flux:badge>
+                            </div>
 
-                        {{-- Price --}}
-                        <div class="col-span-2 text-right">
-                            <span class="font-semibold text-slate-800">
+                            {{-- Price --}}
+                            <div class="col-span-2 text-right font-semibold tabular-nums text-stone-800 dark:text-zinc-100">
                                 ₹{{ number_format((float) $menu->price, 2) }}
-                            </span>
-                        </div>
+                            </div>
 
-                        {{-- Status --}}
-                        <div class="col-span-2 text-right">
-                            <span @class([
-                                'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-                                'bg-emerald-100 text-emerald-800' => $menu->is_available,
-                                'bg-red-100 text-red-800' => ! $menu->is_available,
-                            ])>
-                                <span @class([
-                                    'w-1.5 h-1.5 rounded-full',
-                                    'bg-emerald-500' => $menu->is_available,
-                                    'bg-red-400' => ! $menu->is_available,
-                                ])></span>
-                                {{ $menu->is_available ? 'Available' : 'Unavailable' }}
-                            </span>
-                        </div>
+                            {{-- Status --}}
+                            <div class="col-span-2 text-center">
+                                <flux:badge size="sm" :color="$menu->is_available ? 'emerald' : 'red'" inset="top bottom">
+                                    {{ $menu->is_available ? 'Available' : 'Unavailable' }}
+                                </flux:badge>
+                            </div>
 
-                        {{-- Actions (UI only for now) --}}
-                        <div class="col-span-2 flex justify-center gap-3">
-                            <flux:icon.pencil-square color="green" wire:click="show({{ $menu->id }})" class="cursor-pointer" />
-                            <flux:icon.trash color="red" wire:click="showDeleteModal({{ $menu->id }})" class="cursor-pointer" />
+                            {{-- Actions --}}
+                            <div class="col-span-1 flex justify-end gap-1">
+                                <flux:tooltip content="Edit">
+                                    <flux:button size="sm" variant="ghost" icon="pencil-square" wire:click="show({{ $menu->id }})" />
+                                </flux:tooltip>
+                                <flux:tooltip content="Delete">
+                                    <flux:button size="sm" variant="ghost" icon="trash" class="text-red-500! hover:bg-red-50! dark:hover:bg-red-500/10!" wire:click="showDeleteModal({{ $menu->id }})" />
+                                </flux:tooltip>
+                            </div>
                         </div>
-                    </div>
-                @empty
-                    {{-- Empty State --}}
-                    <div class="px-6 py-16 text-center bg-red-100">
-                        <div class="mx-auto w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                            <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
-                            </svg>
+                    @empty
+                        {{-- Empty State --}}
+                        <div class="px-6 py-16 text-center">
+                            <div class="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-500/10">
+                                <flux:icon.book-open class="size-7 text-amber-500" />
+                            </div>
+                            <flux:heading size="lg">No menu items found</flux:heading>
+                            <flux:text class="mt-1">Try a different search, or create your first menu item.</flux:text>
+                            <flux:button wire:click="create" variant="primary" icon="plus" size="sm" class="mt-4">New Menu Item</flux:button>
                         </div>
-                        <h3 class="text-lg font-medium text-slate-900 mb-4">No menu items found</h3>
-                        <p class="text-slate-500">Get started by creating your first menu item.</p>
-                    </div>
-                @endforelse
+                    @endforelse
+                </div>
             </div>
         </div>
 
         {{-- Pagination (Flux reads the Laravel paginator object) --}}
-        <div class="mt-6">
-            <flux:pagination :paginator="$menus" />
-        </div>
-
-        {{-- Footer Note --}}
-        <div class="mt-4 text-center text-sm text-slate-400">
-            Showing
-            <span class="font-medium text-slate-500">{{ $menus->firstItem() ?? 0 }}</span>
-            –
-            <span class="font-medium text-slate-500">{{ $menus->lastItem() ?? 0 }}</span>
-            of
-            <span class="font-medium text-slate-500">{{ $menus->total() }}</span>
-            menu items
+        <div class="flex flex-col items-center justify-between gap-3 border-t border-stone-200 px-6 py-3 sm:flex-row dark:border-zinc-800">
+            <flux:text class="text-sm">
+                Showing
+                <span class="font-medium">{{ $menus->firstItem() ?? 0 }}</span>
+                –
+                <span class="font-medium">{{ $menus->lastItem() ?? 0 }}</span>
+                of
+                <span class="font-medium">{{ $menus->total() }}</span>
+                menu items
+            </flux:text>
+            <flux:pagination :paginator="$menus" class="border-0! pt-0!" />
         </div>
     </div>
 
-    {{-- Modal form (create / edit — logic later) --}}
-    <flux:modal wire:model.self="showModal" name="menu-item-form" class="md:w-96 bg-white">
+    {{-- Modal form (create / edit) --}}
+    <flux:modal wire:model.self="showModal" name="menu-item-form" class="w-full md:w-md">
         <div class="space-y-6">
             <div>
                 <flux:heading size="lg">
@@ -360,24 +374,56 @@ new class extends Component
             </div>
 
             <form wire:submit="{{ $selectedMenuId ? 'update' : 'save' }}" class="space-y-4">
-                <flux:select 
-                    searchable 
-                    wire:model="category_id" 
-                    placeholder="Choose Category...">
-                    <flux:select.option value="">Select Category</flux:select.option>
+                <flux:select wire:model="category_id" label="Category">
+                    <flux:select.option value="">Select category...</flux:select.option>
                     @foreach($categories as $category)
-                        <flux:select.option  value="{{$category->id}}">{{$category->name}}</flux:select.option>
+                        <flux:select.option value="{{ $category->id }}">{{ $category->name }}</flux:select.option>
                     @endforeach
                 </flux:select>
-                <flux:input wire:model="name" label="Name" placeholder="Menu item name" />
-                <flux:input wire:model="description" label="Description" placeholder="Short description" />
-                <flux:input wire:model="price" type="number" step="0.01" min="0" label="Price (₹)" placeholder="0.00" />
+                <flux:input wire:model="name" label="Name" placeholder="e.g. Cappuccino" />
+                <flux:textarea wire:model="description" label="Description" placeholder="Short description (optional)" rows="2" />
+                <flux:input wire:model="price" type="number" step="0.01" min="0" label="Price" placeholder="0.00" icon="currency-rupee" />
 
-                <div class="flex items-center justify-between mt-4">
+                {{-- Image upload --}}
+                <flux:field>
+                    <flux:label>Image</flux:label>
+                    <div class="flex items-center gap-4">
+                        {{--
+                            Preview:
+                            - a new file was picked  -> temporaryUrl() shows it before it is saved
+                              (isPreviewable() = false for non-image files, so we skip those)
+                            - editing, nothing picked -> show the image already saved
+                        --}}
+                        <div class="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed border-stone-300 bg-stone-50 dark:border-zinc-700 dark:bg-zinc-800">
+                            @if ($image && $image->isPreviewable())
+                                <img src="{{ $image->temporaryUrl() }}" alt="Preview" class="size-full object-cover">
+                            @elseif ($existingImage)
+                                <img src="{{ Storage::disk('public')->url($existingImage) }}" alt="Current image" class="size-full object-cover">
+                            @else
+                                <flux:icon.photo class="size-7 text-stone-400" />
+                            @endif
+
+                            {{-- wire:loading shows this overlay only while the file is uploading --}}
+                            <div wire:loading.flex wire:target="image" class="absolute inset-0 items-center justify-center bg-white/70 dark:bg-zinc-900/70">
+                                <flux:icon.loading class="size-5" />
+                            </div>
+                        </div>
+
+                        <div class="min-w-0 flex-1 space-y-1">
+                            {{-- wire:model on a file input uploads the file as soon as it is picked --}}
+                            <flux:input type="file" wire:model="image" accept="image/*" />
+                            <flux:text class="text-xs">JPG, PNG or WEBP, up to 2 MB.{{ $existingImage ? ' Pick a new file to replace the current image.' : '' }}</flux:text>
+                        </div>
+                    </div>
+                    <flux:error name="image" />
+                </flux:field>
+
+                <div class="flex justify-end gap-2 pt-2">
                     <flux:modal.close>
                         <flux:button type="button" variant="ghost">Cancel</flux:button>
                     </flux:modal.close>
-                    <flux:button type="submit" variant="primary">
+                    {{-- wire:loading.attr="disabled" = can't submit while the image is still uploading --}}
+                    <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="image">
                         {{ $selectedMenuId ? 'Update' : 'Save' }}
                     </flux:button>
                 </div>
@@ -391,7 +437,7 @@ new class extends Component
             <div>
                 <flux:heading size="lg">Delete menu item?</flux:heading>
                 <flux:text class="mt-2">
-                    You're about to delete {{ $selectedMenuName }}.<br>
+                    You're about to delete <strong>{{ $selectedMenuName }}</strong>.<br>
                     This action cannot be reversed.
                 </flux:text>
             </div>
@@ -400,7 +446,7 @@ new class extends Component
                 <flux:modal.close>
                     <flux:button type="button" variant="ghost">Cancel</flux:button>
                 </flux:modal.close>
-                <flux:button type="button" wire:click="deleteMenu" variant="danger">Yes</flux:button>
+                <flux:button type="button" wire:click="deleteMenu" variant="danger">Delete</flux:button>
             </div>
         </div>
     </flux:modal>

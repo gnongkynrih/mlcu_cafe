@@ -120,33 +120,94 @@ new class extends Component
 };
 ?>
 
-<div class="min-w-7xl bg-slate-50 min-h-screen p-4 mx-auto rounded-lg">
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-        @foreach($tables as $table)
-            <flux:card wire:click="selectTable({{ $table['id'] }})" class="{{$table['status']=='available' ? 'bg-emerald-400' : 'bg-red-400'}} min-h-44 hover:bg-slate-500">
-                {{ $table['name']}}
-        
-            </flux:card>
-        @endforeach
+<div class="mx-auto max-w-6xl space-y-6">
+
+    {{-- Header --}}
+    <div class="flex flex-wrap items-end justify-between gap-4">
+        <div>
+            <flux:heading size="xl" level="1">Select a Table</flux:heading>
+            <flux:text class="mt-1">Tap a table to start a new order or continue an open one.</flux:text>
+        </div>
+
+        {{-- Legend --}}
+        <div class="flex items-center gap-4 text-sm text-stone-600 dark:text-zinc-400">
+            <span class="flex items-center gap-2"><span class="size-3 rounded-full bg-emerald-500"></span> Available</span>
+            <span class="flex items-center gap-2"><span class="size-3 rounded-full bg-rose-500"></span> Occupied</span>
+        </div>
     </div>
 
-    <flux:modal wire:model.self="showModal" name="select-table-modal" class="md:w-96">
+    {{-- Tables grid --}}
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+        @forelse($tables as $table)
+            @php($isAvailable = $table['status'] == 'available')
+            <button
+                type="button"
+                wire:key="table-{{ $table['id'] }}"
+                wire:click="selectTable({{ $table['id'] }})"
+                @class([
+                    'group relative flex min-h-36 flex-col justify-between rounded-xl border-2 p-4 text-left transition',
+                    'hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500',
+                    'border-emerald-200 bg-emerald-50 hover:border-emerald-400 dark:border-emerald-500/30 dark:bg-emerald-500/10' => $isAvailable,
+                    'border-rose-200 bg-rose-50 hover:border-rose-400 dark:border-rose-500/30 dark:bg-rose-500/10' => ! $isAvailable,
+                ])
+            >
+                <div class="flex items-start justify-between">
+                    <span @class([
+                        'flex size-10 items-center justify-center rounded-lg',
+                        'bg-emerald-500 text-white' => $isAvailable,
+                        'bg-rose-500 text-white' => ! $isAvailable,
+                    ])>
+                        <flux:icon.squares-2x2 class="size-5" />
+                    </span>
+                    <span @class([
+                        'text-xs font-semibold uppercase tracking-wide',
+                        'text-emerald-700 dark:text-emerald-400' => $isAvailable,
+                        'text-rose-700 dark:text-rose-400' => ! $isAvailable,
+                    ])>
+                        {{ $isAvailable ? 'Available' : 'Occupied' }}
+                    </span>
+                </div>
+
+                <div>
+                    <p class="text-xl font-bold text-stone-800 dark:text-zinc-100">{{ $table['name'] }}</p>
+                    <p class="flex items-center gap-1 text-sm text-stone-500 dark:text-zinc-400">
+                        <flux:icon.users variant="micro" /> Seats {{ $table['capacity'] ?? '—' }}
+                    </p>
+                </div>
+            </button>
+        @empty
+            <div class="col-span-full rounded-xl border border-dashed border-stone-300 px-6 py-16 text-center dark:border-zinc-700">
+                <flux:heading size="lg">No active tables</flux:heading>
+                <flux:text class="mt-1">Add tables from <flux:link href="{{ route('table-management') }}">Table Management</flux:link> first.</flux:text>
+            </div>
+        @endforelse
+    </div>
+
+    <flux:modal wire:model.self="showModal" name="select-table-modal" class="w-full md:w-md">
         <div class="space-y-6">
             <div>
-                <flux:heading size="lg">Select Table</flux:heading>
-                <flux:text class="mt-2">Select a table to proceed.</flux:text>
+                <flux:heading size="lg">{{ $selectedTableName ? 'Table '.$selectedTableName : 'Select Table' }}</flux:heading>
+                <flux:text class="mt-2">
+                    {{ $orderId ? 'This table already has an open order. Review the details and continue.' : 'Enter the customer details to start a new order.' }}
+                </flux:text>
             </div>
-            <flux:input wire:model="name" label="Customer Name" placeholder="Your name" />
-            <flux:input wire:model="guests" label="Number of Guests" type="number" />
-            <flux:select wire:model="orderType" label="Order Type">
-                <flux:select.option value="dine">Dine In</flux:select.option>
-                <flux:select.option value="takeout">Takeout</flux:select.option>
-            </flux:select>
-            <div class="flex">
-                <flux:spacer />
-                <flux:button type="button" wire:click="takeOrder" variant="primary">Save changes</flux:button>
+
+            <flux:input wire:model="name" label="Customer Name" placeholder="Customer name (optional)" icon="user" />
+            <flux:input wire:model="guests" label="Number of Guests" type="number" min="1" icon="users" />
+
+            <flux:radio.group wire:model="orderType" label="Order Type" variant="segmented">
+                <flux:radio value="dine" label="Dine In" />
+                <flux:radio value="takeout" label="Takeout" />
+            </flux:radio.group>
+
+            <div class="flex justify-end gap-2">
+                <flux:modal.close>
+                    <flux:button type="button" variant="ghost">Cancel</flux:button>
+                </flux:modal.close>
+                <flux:button type="button" wire:click="takeOrder" variant="primary" icon:trailing="arrow-right">
+                    {{ $orderId ? 'Continue Order' : 'Start Order' }}
+                </flux:button>
             </div>
         </div>
     </flux:modal>
-</div>
 </div>
