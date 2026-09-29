@@ -12,7 +12,7 @@ new class extends Component
     public $name;
     public $guests = 1;
     public $orderType = 'dine';
-
+    public $orderId = null;
     public function mount(){
         //clear the session
         session()->put('order',null);
@@ -27,24 +27,70 @@ new class extends Component
         //convert the array into a collection
         $table = collect($this->tables)->firstWhere('id',$id);
         $this->selectedTableName = $table['name'];
+
+        //check if the table is open i.e someone is already sitting
+        //select * from orders where status=open and cafe_table_id=id sort by id desc limit 1
+        $order = Order::where('status','open')->where('cafe_table_id',$id)->latest()->first();
+        if($order){
+            $this->name = $order->customer_name;
+            $this->guests = $order->guests;
+            $this->orderType = $order->order_type;
+            $this->orderId = $order->id;
+        }else{
+            $this->name = '';
+            $this->guests = 1;
+            $this->orderId = null;
+        }
+
         $this->showModal = true;
     }
 
     public function takeOrder(){
        
         //store into the order table
-        $order = Order::create([
-            'order_number' => time(),
-            'cafe_table_id' => $this->selectedTableId,
-            'customer_name' => $this->name,
-            'guests' => $this->guests,
-            'status' => 'open',
-            'order_type' => $this->orderType,
-            'subtotal' => 0,
-            'discount_amount' => 0,
-            'tax_amount' => 0,
-            'total_amount' => 0
-        ]);
+        $order = Order::updateOrCreate(
+            ['id' => $this->orderId],     //condition it checks if the orderid exist, if so it updates else insert
+            [
+                'order_number' => time(),
+                'cafe_table_id' => $this->selectedTableId,
+                'customer_name' => $this->name,
+                'guests' => $this->guests,
+                'status' => 'open',
+                'order_type' => $this->orderType,
+                'subtotal' => 0,
+                'discount_amount' => 0,
+                'tax_amount' => 0,
+                'total_amount' => 0
+            ]);
+
+            //THIS IS ANOTHERWAY OF DOING IT
+            // $order = Order::findOrFail($this->orderId);
+            // if($order != null){
+            //     $order->update([
+
+            //     ]);
+            // }else{
+            //     $order->create([
+
+            //     ]);
+            // }
+            //OR THIS WAY 
+        // if($this->orderId != null){
+        //     $order = Order::findOrFail($this->orderId);
+        // }else{
+        //     $order = new Order();
+        // }
+        // $order->order_number = time(),
+        // $order->cafe_table_id = $this->selectedTableId,
+        // $order->customer_name = $this->name,
+        // $order->guests = $this->guests,
+        // $order->status = open,
+        // $order->order_type = $this->orderType,
+        // $order->subtotal = 0,
+        // $order->discount_amount = 0,
+        // $order->tax_amount = 0,
+        // $order->total_amount = 0
+        // $order->save();
 
         //update the status of the cafetable
         // CafeTable::findOrFail($this->selectedTableId)->update([
