@@ -40,6 +40,9 @@
                     <flux:sidebar.item icon="squares-2x2" href="{{ route('table-management') }}" :current="request()->routeIs('table-management')">
                         Tables
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="user-plus" href="{{ route('register') }}" :current="request()->routeIs('register')">
+                        Register User
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

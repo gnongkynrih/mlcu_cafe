@@ -143,7 +143,9 @@ return [
     */
 
     'features' => [
-        Features::registration(),
+        // Public sign up is OFF. Only logged-in users can create accounts,
+        // see RegisteredUserController and the 'register' routes in routes/web.php.
+        // Features::registration(),
         Features::resetPasswords(),
         Features::emailVerification(),
     ],
