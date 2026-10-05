@@ -89,3 +89,7 @@ eg in the MenuItem model
 public function category(){
   return $this->belongsTo(Category::class);
 }
+
+//WHEN WE UPLOAD IMAGES/FILES FROM LARAVEL WE WILL NEED TO GIVE PERMISSOIN OR CREATE A SYMBOLIC LINK TO THE STORAGE/PUBLIC FOLDER
+//TO DO THAT FROM YOUR PROJECT FOLDER TYPE
+php artisan storage:link

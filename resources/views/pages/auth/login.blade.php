@@ -7,8 +7,8 @@
             <div class="pointer-events-none absolute -right-24 -top-24 size-96 rounded-full bg-white/10"></div>
             <div class="pointer-events-none absolute -bottom-32 -left-16 size-80 rounded-full bg-white/10"></div>
 
-            <a href="{{ route('welcome') }}" class="relative flex items-center gap-3 text-lg font-semibold">
-                <span class="flex size-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur">
+             <p class="relative flex items-center gap-3 text-lg font-semibold">
+                <span class="flex size-10 items-center justify-center rounded-xl bg-white/20 ">
                     <flux:icon.cake class="size-6" />
                 </span>
                 MLCU Cafe
@@ -19,7 +19,7 @@
                 <p class="text-lg text-white/85">Manage tables, menus and orders for your cafe — all in one simple place.</p>
 
                 <ul class="space-y-3 text-white/90">
-                    <li class="flex items-center gap-3"><flux:icon.check-circle variant="mini" /> Live table status at a glance</li>
+                    <li class="flex gap-3 items-center"><flux:icon.check-circle variant="mini" /> Live table status at a glance</li>
                     <li class="flex items-center gap-3"><flux:icon.check-circle variant="mini" /> Menu with photos and categories</li>
                     <li class="flex items-center gap-3"><flux:icon.check-circle variant="mini" /> Quick, touch-friendly ordering</li>
                 </ul>
@@ -33,7 +33,7 @@
             <div class="w-full max-w-sm space-y-8">
 
                 {{-- Brand for small screens --}}
-                <a href="{{ route('welcome') }}" class="flex items-center justify-center gap-2 font-semibold lg:hidden">
+                <a href="{{ route('dashboard') }}" class="flex items-center justify-center gap-2 font-semibold lg:hidden">
                     <span class="flex size-9 items-center justify-center rounded-lg bg-amber-500 text-white">
                         <flux:icon.cake class="size-5" />
                     </span>
@@ -54,7 +54,7 @@
                     <!-- Email Address -->
                     <flux:input
                         name="email"
-                        :label="__('Email address')"
+                        label="Email"
                         :value="old('email')"
                         type="email"
                         required
@@ -68,9 +68,10 @@
                     <div class="relative">
                         <flux:input
                             name="password"
-                            :label="__('Password')"
+                            label="Password"
                             type="password"
                             required
+                            autofocus
                             autocomplete="current-password"
                             :placeholder="__('Password')"
                             icon="lock-closed"
@@ -87,7 +88,7 @@
                     <!-- Remember Me -->
                     <flux:checkbox name="remember" :label="__('Remember me')" :checked="old('remember')" />
 
-                    <flux:button variant="primary" type="submit" class="w-full" data-test="login-button">
+                    <flux:button variant="primary" type="submit"  data-test="login-button">
                         {{ __('Log in') }}
                     </flux:button>
                 </form>

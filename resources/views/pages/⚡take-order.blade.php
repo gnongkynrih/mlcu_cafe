@@ -83,6 +83,7 @@ new class extends Component
             removeItem($menuId)    -> unset($this->cart[$menuId])
     --}}
     @php
+    
         $cartItems = $cart ?? [];
         $itemCount = collect($cartItems)->sum('qty');
         $subtotal = collect($cartItems)->sum(fn ($item) => $item['price'] * $item['qty']);

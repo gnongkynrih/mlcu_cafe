@@ -386,7 +386,7 @@ new class extends Component
 
                 {{-- Image upload --}}
                 <flux:field>
-                    <flux:label>Image</flux:label>
+                    <flux:label>Food Image</flux:label>
                     <div class="flex items-center gap-4">
                         {{--
                             Preview:
@@ -412,7 +412,7 @@ new class extends Component
                         <div class="min-w-0 flex-1 space-y-1">
                             {{-- wire:model on a file input uploads the file as soon as it is picked --}}
                             <flux:input type="file" wire:model="image" accept="image/*" />
-                            <flux:text class="text-xs">JPG, PNG or WEBP, up to 2 MB.{{ $existingImage ? ' Pick a new file to replace the current image.' : '' }}</flux:text>
+                            <flux:text class="text-xs">JPG, PNG or WEBP, up to 1 MB.{{ $existingImage ? ' Pick a new file to replace the current image.' : '' }}</flux:text>
                         </div>
                     </div>
                     <flux:error name="image" />

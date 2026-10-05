@@ -3,10 +3,10 @@
 use App\Http\Controllers\RegisteredUserController;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'welcome')->name('welcome');
+// Route::view('/', 'welcome')->name('welcome');
 
 Route::middleware(['auth'])->group(function () {
-    Route::livewire('/dashboard', 'pages::dashboard')->name('dashboard');
+    Route::livewire('/', 'pages::dashboard')->name('dashboard');
     Route::livewire('/category-management', 'pages::admin.category-management')->name('category-management');
     Route::livewire('/menu-management', 'pages::admin.menu-item-management')->name('menu-management');
     Route::livewire('/table-management', 'pages::admin.table-management')->name('table-management');
