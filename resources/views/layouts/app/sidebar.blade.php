@@ -28,7 +28,7 @@
                     Take Order
                 </flux:sidebar.item>
             </flux:sidebar.nav>
-
+            @role('admin')
             <flux:sidebar.nav>
                 <flux:sidebar.group heading="Admin" class="grid">
                     <flux:sidebar.item icon="tag" href="{{ route('category-management') }}" :current="request()->routeIs('category-management')">
@@ -45,6 +45,7 @@
                     </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
+            @endrole
 
             <flux:sidebar.spacer />
 

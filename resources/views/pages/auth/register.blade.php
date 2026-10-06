@@ -11,7 +11,6 @@
         @if (session('status'))
             <flux:callout variant="success" icon="check-circle" :heading="session('status')" />
         @endif
-
         <div class="rounded-xl border border-stone-200 bg-white p-6 shadow-xs sm:p-8 dark:border-zinc-800 dark:bg-zinc-900">
             <form method="POST" action="{{ route('register.store') }}" class="space-y-6">
                 @csrf
@@ -67,6 +66,17 @@
                         icon="lock-closed"
                         viewable
                     />
+                    <flux:select
+                        name="role"
+                        :label="__('Role')"
+                        
+                        :placeholder="__('Select a role')"
+                        icon="user"
+                    >
+                        @foreach($roles as $role)
+                            <flux:select.option value="{{ $role->name }}">{{ $role->name }}</flux:select.option>
+                        @endforeach
+                    </flux:select>
                 </div>
 
                 <flux:separator />

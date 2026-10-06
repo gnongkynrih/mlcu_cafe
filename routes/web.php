@@ -5,12 +5,16 @@ use Illuminate\Support\Facades\Route;
 
 // Route::view('/', 'welcome')->name('welcome');
 
-Route::middleware(['auth'])->group(function () {
-    Route::livewire('/', 'pages::dashboard')->name('dashboard');
+Route::middleware(['auth','role:admin'])->group(function(){
     Route::livewire('/category-management', 'pages::admin.category-management')->name('category-management');
     Route::livewire('/menu-management', 'pages::admin.menu-item-management')->name('menu-management');
     Route::livewire('/table-management', 'pages::admin.table-management')->name('table-management');
 
+});
+Route::middleware(['auth','permission:take order'])->group(function () {
+    Route::livewire('/', 'pages::dashboard')->name('dashboard');
+    Route::livewire('/dashboard', 'pages::dashboard')->name('dashboard');
+   
     Route::livewire('/take-order', 'pages::⚡take-order')->name('take-order');
     Route::livewire('/select-table', 'pages::⚡select-table')->name('select-table');
 

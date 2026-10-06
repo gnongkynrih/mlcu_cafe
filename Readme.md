@@ -93,3 +93,84 @@ public function category(){
 //WHEN WE UPLOAD IMAGES/FILES FROM LARAVEL WE WILL NEED TO GIVE PERMISSOIN OR CREATE A SYMBOLIC LINK TO THE STORAGE/PUBLIC FOLDER
 //TO DO THAT FROM YOUR PROJECT FOLDER TYPE
 php artisan storage:link
+
+FOR ROLES AND PERMISSION WE WILL USE SPATIE/LARAVEL PERMISSION PACKAGE
+https://spatie.be/docs/laravel-permission/v8/introduction
+INSTALLATION
+composer require spatie/laravel-permission
+(if you pull this code then run composer isntall after downloading)
+publish the migrations required
+   --> php artisan vendor:publish --provider="Spatie\Permission\PermissionServiceProvider"
+now migrate the tables
+php artisan migrate
+
+in the User model we will have to include
+use Spatie\Permission\Traits\HasRoles;
+and 
+use HasRoles //inside the class
+
+Now clear the cache
+ php artisan optimize:clear
+
+ CREATE THE ROLES AND PERMISSION IN THE SEEDER
+ php artisan make:seeder RoleAndPermissionSeeder
+
+ use Spatie\Permission\Models\Role;
+use Spatie\Permission\Models\Permission;
+
+$role = Role::create(['name' => 'writer']);
+$permission = Permission::create(['name' => 'edit articles']);
+
+after we write the roles and permission we execute the seeder
+php artisan db:seed --class=RoleAndPermissionSeeder
+
+//WHEN CREATING USER WE SHOULD ASSIGN THEM A ROLE
+//eg
+//To give option to select role during user creation
+in the App/Http/Controllers/RegisteredUserController file we will load the roles and pass it to the view
+$roles = Role::all();
+$user = User::create([
+    'name' => 'John Doe',
+    'email' => 'john@example.com',
+    'password' => bcrypt('password'),
+]);
+$user->assignRole('admin');
+
+to edit the registration page
+resources/views/pages/auth/register.blade.php
+  <flux:select
+      name="role"
+      :label="__('Role')"
+      
+      :placeholder="__('Select a role')"
+      icon="user"
+  >
+      @foreach($roles as $role)
+          <flux:select.option value="{{ $role->name }}">{{ $role->name }}</flux:select.option>
+      @endforeach
+  </flux:select>
+  
+Spatie package comes with RoleMiddleware, PermissionMiddleware and RoleOrPermissionMiddleware middleware.
+You can register their aliases for easy reference elsewhere in your app:
+Open /bootstrap/app.php and register them there:
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\PermissionMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
+
+return Application::configure(basePath: dirname(__DIR__))
+    // ...
+    ->withMiddleware(function (Middleware $middleware) {
+        $middleware->alias([
+            'role' => RoleMiddleware::class,
+            'permission' => PermissionMiddleware::class,
+            'role_or_permission' => RoleOrPermissionMiddleware::class,
+        ]);
+    })
+    // ...
+
+    BLADE and ROLES
+    @role('writer') //if the user has role writer it will show i am a writer
+    I am a writer!
+@else
+    I am not a writer...
+@endrole

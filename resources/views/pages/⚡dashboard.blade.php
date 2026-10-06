@@ -11,7 +11,13 @@ new class extends Component
 <div class="mx-auto max-w-6xl space-y-6">
     <div>
         <flux:heading size="xl" level="1">Welcome back, {{ auth()->user()->name }}</flux:heading>
-        <flux:text class="mt-1">What would you like to do today?</flux:text>
+        <flux:text class="mt-1">
+            @role('admin')
+                Administrator
+            @else
+                Manager
+            @endrole
+        </flux:text>
     </div>
 
     {{-- Quick links --}}

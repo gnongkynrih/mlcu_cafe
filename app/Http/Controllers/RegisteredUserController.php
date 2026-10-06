@@ -6,6 +6,7 @@ use App\Actions\Fortify\CreateNewUser;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Spatie\Permission\Models\Role;
 
 /**
  * Lets a LOGGED-IN user create accounts for other staff.
@@ -21,7 +22,9 @@ class RegisteredUserController extends Controller
      */
     public function create(): View
     {
-        return view('pages::auth.register');
+        //select id,name from roles
+        $roles = Role::all(); //getting all the roles
+        return view('pages::auth.register', compact('roles')); //passing the roles to the view
     }
 
     /**
@@ -35,7 +38,10 @@ class RegisteredUserController extends Controller
     public function store(Request $request, CreateNewUser $createNewUser): RedirectResponse
     {
         $user = $createNewUser->create($request->all());
-
+       
+        //assign the role
+        $user->assignRole($request->role);
+        
         return redirect()
             ->route('register')
             ->with('status', "Account for {$user->name} ({$user->email}) was created.");
