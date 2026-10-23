@@ -174,3 +174,6 @@ return Application::configure(basePath: dirname(__DIR__))
 @else
     I am not a writer...
 @endrole
+## Take Order page
+
+See [ORDER-PAGE.md](ORDER-PAGE.md) for a step-by-step explanation of the cart, computed properties and Send to Kitchen.

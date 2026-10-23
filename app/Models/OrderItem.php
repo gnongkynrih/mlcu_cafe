@@ -14,14 +14,24 @@ class OrderItem extends Model
         'unit_price',
         'quantity',
         'subtotal',
+        'note',
         'status',
+        'cancel_reason',
+        'cancelled_at',
     ];
-    
+
+    protected function casts(): array
+    {
+        return [
+            'cancelled_at' => 'datetime',
+        ];
+    }
+
     public function order()
     {
         return $this->belongsTo(Order::class);
     }
-    
+
     public function menuItem()
     {
         return $this->belongsTo(MenuItem::class);

@@ -136,6 +136,11 @@ new class extends Component
         </div>
     </div>
 
+    {{-- Message after an order was cancelled (session()->flash in take-order) --}}
+    @if (session('status'))
+        <flux:callout variant="success" icon="check-circle" :heading="session('status')" />
+    @endif
+
     {{-- Tables grid --}}
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
         @forelse($tables as $table)

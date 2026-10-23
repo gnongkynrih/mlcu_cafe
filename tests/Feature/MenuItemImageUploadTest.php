@@ -1,7 +1,9 @@
 <?php
 
+use App\Models\CafeTable;
 use App\Models\Category;
 use App\Models\MenuItem;
+use App\Models\Order;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -89,9 +91,18 @@ test('the take order page shows menu item images', function () {
     $image = UploadedFile::fake()->image('mocha.jpg')->store('menu-items', 'public');
     $menuItem = MenuItem::factory()->create(['category_id' => $category->id, 'image' => $image]);
 
+    $table = CafeTable::create(['name' => 'T1', 'capacity' => 4]);
+    $order = Order::create([
+        'order_number' => '1000000001',
+        'cafe_table_id' => $table->id,
+        'status' => 'open',
+        'subtotal' => 0,
+        'total_amount' => 0,
+    ]);
+
     session()->put('order', [
-        'order_id' => 1,
-        'table_id' => 1,
+        'order_id' => $order->id,
+        'table_id' => $table->id,
         'table_name' => 'T1',
         'customer_name' => 'Ana',
         'guests' => 2,
