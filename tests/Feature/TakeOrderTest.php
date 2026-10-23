@@ -252,6 +252,28 @@ test('the order cannot be cancelled once the kitchen has started an item', funct
     expect($this->order->fresh()->status)->toBe('open');
 });
 
+test('checkout is hidden until an item has been sent to the kitchen', function () {
+    $coffee = menuItem();
+
+    Livewire::test('pages::take-order')
+        ->assertDontSee(route('checkout'))
+        ->assertSee('Send at least one item to the kitchen before checkout.')
+        ->call('addItem', $coffee->id)
+        ->assertDontSee(route('checkout'))
+        ->assertSee('Send the new items to the kitchen before checkout.');
+});
+
+test('checkout is offered when the cart is empty and items were sent', function () {
+    $coffee = menuItem();
+
+    Livewire::test('pages::take-order')
+        ->call('addItem', $coffee->id)
+        ->call('sendToKitchen')
+        ->assertSee(route('checkout'))
+        ->call('addItem', $coffee->id)
+        ->assertDontSee(route('checkout'));
+});
+
 test('a cancelled order cannot be opened again from the session', function () {
     $this->order->update(['status' => 'cancelled']);
 

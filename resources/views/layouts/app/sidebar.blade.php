@@ -24,7 +24,7 @@
                 <flux:sidebar.item icon="home" href="{{ route('dashboard') }}" :current="request()->routeIs('dashboard')">
                     Dashboard
                 </flux:sidebar.item>
-                <flux:sidebar.item icon="receipt-percent" href="{{ route('select-table') }}" :current="request()->routeIs('select-table', 'take-order')">
+                <flux:sidebar.item icon="receipt-percent" href="{{ route('select-table') }}" :current="request()->routeIs('select-table', 'take-order', 'checkout')">
                     Take Order
                 </flux:sidebar.item>
             </flux:sidebar.nav>

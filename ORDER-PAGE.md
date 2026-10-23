@@ -419,12 +419,43 @@ php artisan migrate
 
 ---
 
-## 10. Exercises for students
+## 10. Checkout
+
+The **Checkout** button on Take Order is shown only when two things are true:
+
+1. The cart is empty (new items have been sent, so the kitchen already has them).
+2. At least one sent item is not cancelled (`sentTotal > 0`).
+
+Checkout reads the same session order. If that order is no longer `open`, the page sends the waiter back to Select Table.
+
+```mermaid
+flowchart LR
+    A[Take Order] -->|cart empty and items sent| B[Checkout]
+    B -->|bill items where status is not cancelled| C[Total]
+    C -->|cash, card, or UPI| D[(orders.status = paid<br/>paid_at, billed_at)]
+    D --> E[table status = available]
+    E --> F[Select Table]
+```
+
+The total is calculated again on the server:
+
+`subtotal` of items that are not cancelled, plus `tax_amount`, minus `discount_amount`.
+
+The browser never sends the total. Cash must be at least that total, and the page shows the change. Card and UPI are taken for the exact total. A bill of ₹0 (for example a discount that covers everything) can be closed without entering cash.
+
+`pay()` then, in one transaction:
+
+1. Sets `orders.status = 'paid'`, `payment_method`, `billed_at`, and `paid_at`.
+2. Sets the table back to `available`.
+
+The session order is removed and Select Table shows “Payment received…”.
+
+## 11. Exercises for students
 
 1. **Tax:** add 5% GST. Where would you calculate it, and which column stores it?
 2. **Kitchen screen:** make a page that lists `order_items` with `status = 'pending'`, with a button that changes the status to `ready`.
 3. **Discount:** let the waiter enter a discount and save it in `orders.discount_amount`.
-4. **Bill / checkout:** when guests pay, set `orders.status = 'paid'`, set `paid_at = now()`, and set the table back to `available`.
+4. **Tip:** on checkout, let the waiter add a tip and include it in `total_amount`.
 5. **RBAC:** only users with a `kitchen` role may open the kitchen screen.
 6. **Manager cancel:** let users with a `cancel started items` permission cancel items that are `preparing`.
 7. **Cancellation report:** list all cancelled items for today, with the reason and the total value lost.

@@ -594,6 +594,26 @@ new class extends Component
                     >
                         Send to Kitchen
                     </flux:button>
+
+                    {{--
+                        Checkout reads the saved order, not this cart.
+                        Hide the link while new items are still only in memory,
+                        or while nothing has been sent yet.
+                    --}}
+                    @if($this->cartCount === 0 && $this->sentTotal > 0)
+                        <flux:button href="{{ route('checkout') }}" variant="outline" icon="banknotes" class="w-full">
+                            Checkout
+                        </flux:button>
+                    @else
+                        <flux:button variant="outline" icon="banknotes" class="w-full" disabled>
+                            Checkout
+                        </flux:button>
+                        <flux:text class="text-center text-xs">
+                            {{ $this->cartCount > 0
+                                ? 'Send the new items to the kitchen before checkout.'
+                                : 'Send at least one item to the kitchen before checkout.' }}
+                        </flux:text>
+                    @endif
                 </div>
             </div>
         </aside>
