@@ -5,7 +5,12 @@ use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Services\RazorpayGateway;
 use Livewire\Livewire;
+use Razorpay\Api\Errors\BadRequestError;
+use Razorpay\Api\Errors\SignatureVerificationError;
+
+use function Pest\Laravel\mock;
 
 beforeEach(function () {
     $this->category = Category::factory()->create();
@@ -91,12 +96,12 @@ test('the bill lists payable items and leaves out cancelled ones', function () {
         ->assertDontSee('999');
 });
 
-test('paying by card or upi marks the order paid and frees the table', function (string $method) {
+test('paying by upi marks the order paid and frees the table', function () {
     billItem($this->order);
     $this->freezeTime();
 
     Livewire::test('pages::checkout')
-        ->set('paymentMethod', $method)
+        ->set('paymentMethod', 'upi')
         ->call('pay')
         ->assertRedirect(route('select-table'));
 
@@ -104,7 +109,7 @@ test('paying by card or upi marks the order paid and frees the table', function 
 
     expect($paid)
         ->status->toBe('paid')
-        ->payment_method->toBe($method)
+        ->payment_method->toBe('upi')
         ->subtotal->toEqual(50)
         ->total_amount->toEqual(50)
         ->and($paid->paid_at->format('Y-m-d H:i:s'))->toBe(now()->format('Y-m-d H:i:s'))
@@ -112,7 +117,7 @@ test('paying by card or upi marks the order paid and frees the table', function 
         ->and($this->table->fresh()->status)->toBe('available')
         ->and(session('order'))->toBeNull()
         ->and(session('status'))->toBe('Payment received for table T1. The table is free.');
-})->with(['card', 'upi']);
+});
 
 test('paying by cash shows the change and records the payment when the amount covers the bill', function () {
     billItem($this->order);
@@ -188,7 +193,7 @@ test('an unknown payment method is rejected', function () {
         ->set('paymentMethod', 'voucher')
         ->call('pay')
         ->assertNoRedirect()
-        ->assertSee('Choose cash, card, or UPI.');
+        ->assertSee('Choose cash, RazorPay, or UPI.');
 
     expect($this->order->fresh()->status)->toBe('open');
 });
@@ -197,7 +202,7 @@ test('payment is refused when every item was cancelled', function () {
     billItem($this->order, ['status' => 'cancelled', 'item_name' => 'Cake']);
 
     Livewire::test('pages::checkout')
-        ->set('paymentMethod', 'card')
+        ->set('paymentMethod', 'upi')
         ->call('pay')
         ->assertNoRedirect()
         ->assertSee('Nothing to bill yet');
@@ -219,10 +224,203 @@ test('paying does not close a different table\'s order', function () {
     billItem($otherOrder, ['item_name' => 'Tea']);
 
     Livewire::test('pages::checkout')
-        ->set('paymentMethod', 'card')
+        ->set('paymentMethod', 'upi')
         ->call('pay');
 
     expect($otherOrder->fresh()->status)->toBe('open')
         ->and($otherTable->fresh()->status)->toBe('occupied')
         ->and($this->order->fresh()->status)->toBe('paid');
+});
+
+test('paying with razorpay opens checkout and leaves the table occupied', function () {
+    billItem($this->order);
+    config([
+        'services.razorpay.key' => 'rzp_test_key',
+        'services.razorpay.secret' => 'rzp_test_secret',
+    ]);
+    mock(RazorpayGateway::class)
+        ->shouldReceive('createOrder')
+        ->once()
+        ->with(5000, '1000000001')
+        ->andReturn('order_test_123');
+
+    Livewire::test('pages::checkout')
+        ->set('paymentMethod', 'razorpay')
+        ->assertSee('Pay with Razorpay')
+        ->assertSee('A Razorpay window will open. The table stays occupied until that payment succeeds.')
+        ->call('pay')
+        ->assertNoRedirect()
+        ->assertSet('awaitingRazorpay', true)
+        ->assertDispatched('open-razorpay', function (string $name, array $params): bool {
+            expect($params['key'])->toBe('rzp_test_key')
+                ->and($params['amount'])->toBe(5000)
+                ->and($params['currency'])->toBe('INR')
+                ->and($params['orderId'])->toBe('order_test_123')
+                ->and($params['prefillName'])->toBe('Ana')
+                ->and(json_encode($params))->not->toContain('rzp_test_secret');
+
+            return true;
+        })
+        ->call('razorpayDismissed')
+        ->assertSet('awaitingRazorpay', false);
+
+    expect($this->order->fresh())
+        ->status->toBe('open')
+        ->razorpay_order_id->toBe('order_test_123')
+        ->razorpay_payment_id->toBeNull()
+        ->paid_at->toBeNull()
+        ->and($this->table->fresh()->status)->toBe('occupied')
+        ->and(session('order'))->not->toBeNull();
+});
+
+test('a confirmed razorpay payment marks the order paid and frees the table', function () {
+    billItem($this->order);
+    $this->freezeTime();
+    config([
+        'services.razorpay.key' => 'rzp_test_key',
+        'services.razorpay.secret' => 'rzp_test_secret',
+    ]);
+    $gateway = mock(RazorpayGateway::class);
+    $gateway->shouldReceive('createOrder')->once()->with(5000, '1000000001')->andReturn('order_test_123');
+    $gateway->shouldReceive('verifyPayment')->once()->with('order_test_123', 'pay_test_123', 'signed');
+
+    Livewire::test('pages::checkout')
+        ->set('paymentMethod', 'razorpay')
+        ->call('pay')
+        ->set('paymentMethod', 'cash')
+        ->call('confirmRazorpay', 'pay_test_123', 'order_test_123', 'signed')
+        ->assertRedirect(route('select-table'));
+
+    $paid = $this->order->fresh();
+
+    expect($paid)
+        ->status->toBe('paid')
+        ->payment_method->toBe('razorpay')
+        ->razorpay_order_id->toBe('order_test_123')
+        ->razorpay_payment_id->toBe('pay_test_123')
+        ->total_amount->toEqual(50)
+        ->and($paid->paid_at->format('Y-m-d H:i:s'))->toBe(now()->format('Y-m-d H:i:s'))
+        ->and($this->table->fresh()->status)->toBe('available')
+        ->and(session('order'))->toBeNull();
+});
+
+test('a razorpay signature that does not match leaves the table occupied', function () {
+    billItem($this->order);
+    config([
+        'services.razorpay.key' => 'rzp_test_key',
+        'services.razorpay.secret' => 'rzp_test_secret',
+    ]);
+    $gateway = mock(RazorpayGateway::class);
+    $gateway->shouldReceive('createOrder')->once()->andReturn('order_test_123');
+    $gateway->shouldReceive('verifyPayment')->once()->andThrow(new SignatureVerificationError('Invalid signature passed'));
+
+    Livewire::test('pages::checkout')
+        ->set('paymentMethod', 'razorpay')
+        ->call('pay')
+        ->call('confirmRazorpay', 'pay_test_123', 'order_test_123', 'forged')
+        ->assertNoRedirect()
+        ->assertSee('Razorpay could not confirm this payment. The table is still open.');
+
+    expect($this->order->fresh()->status)->toBe('open')
+        ->and($this->order->fresh()->razorpay_payment_id)->toBeNull()
+        ->and($this->table->fresh()->status)->toBe('occupied');
+});
+
+test('a razorpay payment for a different order does not close this bill', function () {
+    billItem($this->order);
+    config([
+        'services.razorpay.key' => 'rzp_test_key',
+        'services.razorpay.secret' => 'rzp_test_secret',
+    ]);
+    $gateway = mock(RazorpayGateway::class);
+    $gateway->shouldReceive('createOrder')->once()->andReturn('order_test_123');
+    $gateway->shouldReceive('verifyPayment')->never();
+
+    Livewire::test('pages::checkout')
+        ->set('paymentMethod', 'razorpay')
+        ->call('pay')
+        ->call('confirmRazorpay', 'pay_test_123', 'order_other', 'signed')
+        ->assertNoRedirect()
+        ->assertSee('This payment does not match the open bill.');
+
+    expect($this->order->fresh()->status)->toBe('open')
+        ->and($this->table->fresh()->status)->toBe('occupied');
+});
+
+test('razorpay is refused when the keys are missing', function () {
+    billItem($this->order);
+    config([
+        'services.razorpay.key' => null,
+        'services.razorpay.secret' => null,
+    ]);
+    mock(RazorpayGateway::class)->shouldReceive('createOrder')->never();
+
+    Livewire::test('pages::checkout')
+        ->set('paymentMethod', 'razorpay')
+        ->call('pay')
+        ->assertNoRedirect()
+        ->assertNotDispatched('open-razorpay')
+        ->assertSee('Razorpay is not set up yet. Add RAZOR_KEY and RAZOR_SECRET to the .env file.');
+
+    expect($this->order->fresh()->status)->toBe('open');
+});
+
+test('razorpay shows an error when the api keys are rejected', function () {
+    billItem($this->order);
+    config([
+        'services.razorpay.key' => 'rzp_test_key',
+        'services.razorpay.secret' => 'rzp_test_secret',
+    ]);
+    mock(RazorpayGateway::class)
+        ->shouldReceive('createOrder')
+        ->once()
+        ->andThrow(new BadRequestError('Authentication failed', 'BAD_REQUEST_ERROR', 401));
+
+    Livewire::test('pages::checkout')
+        ->set('paymentMethod', 'razorpay')
+        ->call('pay')
+        ->assertNoRedirect()
+        ->assertNotDispatched('open-razorpay')
+        ->assertSee('Razorpay refused these API keys. Check RAZOR_KEY and RAZOR_SECRET in the .env file.');
+
+    expect($this->order->fresh()->status)->toBe('open')
+        ->and($this->table->fresh()->status)->toBe('occupied');
+});
+
+test('razorpay is refused when the bill is under one rupee', function () {
+    billItem($this->order);
+    $this->order->update(['discount_amount' => 49.50]);
+    config([
+        'services.razorpay.key' => 'rzp_test_key',
+        'services.razorpay.secret' => 'rzp_test_secret',
+    ]);
+    mock(RazorpayGateway::class)->shouldReceive('createOrder')->never();
+
+    Livewire::test('pages::checkout')
+        ->set('paymentMethod', 'razorpay')
+        ->call('pay')
+        ->assertNoRedirect()
+        ->assertNotDispatched('open-razorpay')
+        ->assertSee('Razorpay cannot collect less than ₹1.00. Take this bill in cash.');
+
+    expect($this->order->fresh()->status)->toBe('open')
+        ->and($this->table->fresh()->status)->toBe('occupied');
+});
+
+test('a fully discounted razorpay bill is paid without opening checkout', function () {
+    billItem($this->order);
+    $this->order->update(['discount_amount' => 50]);
+    mock(RazorpayGateway::class)->shouldReceive('createOrder')->never();
+
+    Livewire::test('pages::checkout')
+        ->set('paymentMethod', 'razorpay')
+        ->call('pay')
+        ->assertNotDispatched('open-razorpay')
+        ->assertRedirect(route('select-table'));
+
+    expect($this->order->fresh())
+        ->status->toBe('paid')
+        ->payment_method->toBe('razorpay')
+        ->total_amount->toEqual(0)
+        ->and($this->table->fresh()->status)->toBe('available');
 });

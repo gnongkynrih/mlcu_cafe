@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    /*
+    | The key id is public and is sent to the browser. The secret is not.
+    | Create both in the Razorpay dashboard under Settings → API Keys.
+    */
+    'razorpay' => [
+        'key' => env('RAZOR_KEY', env('RAZORPAY_KEY_ID')),
+        'secret' => env('RAZOR_SECRET', env('RAZORPAY_KEY_SECRET')),
+    ],
+
 ];

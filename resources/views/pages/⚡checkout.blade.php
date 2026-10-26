@@ -2,19 +2,33 @@
 
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Services\RazorpayGateway;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Computed;
 use Livewire\Component;
+use Razorpay\Api\Errors\BadRequestError;
+use Razorpay\Api\Errors\SignatureVerificationError;
 
 new class extends Component
 {
     // The open order stored by Select Table. The bill itself is always
     // read from the database, never from values the browser can edit.
     public $info = [];
-
+    public $billItems = [];
     public $paymentMethod = 'cash';
 
     public $amountReceived = '';
+
+    // True while the Razorpay window is open, so Take payment cannot run twice.
+    public bool $awaitingRazorpay = false;
+
+    // Re-injected on every request. Not a public property, so it is not sent to the browser.
+    protected RazorpayGateway $razorpay;
+
+    public function boot(RazorpayGateway $razorpay): void
+    {
+        $this->razorpay = $razorpay;
+    }
 
     public function mount(): void
     {
@@ -23,16 +37,22 @@ new class extends Component
         if (! $this->info || ! Order::where('id', $this->info['order_id'])->where('status', 'open')->exists()) {
             session()->forget('order');
 
+            // Stop here. There is no bill to draw, and the next lines would
+            // read the missing order.
             $this->redirect(route('select-table'));
+
+            return;
         }
+
+        $this->billItems = $this->getBillItems();
     }
 
     /**
      * Items the guest still has to pay for. Cancelled lines stay in the
      * database, but they are not part of the bill.
      */
-    #[Computed]
-    public function billItems()
+    
+    public function getBillItems()
     {
         return OrderItem::where('order_id', $this->info['order_id'])
             ->where('status', '!=', 'cancelled')
@@ -56,7 +76,7 @@ new class extends Component
     }
 
     /**
-     * Cash needs an amount that covers the bill. Card and UPI are taken
+     * Cash needs an amount that covers the bill. UPI and Razorpay are taken
      * for the exact total, so no amount is asked.
      */
     #[Computed]
@@ -102,28 +122,149 @@ new class extends Component
         $bill = $this->billFor($order);
 
         $this->validate([
-            'paymentMethod' => ['required', 'in:cash,card,upi'],
+            'paymentMethod' => ['required', 'in:cash,razorpay,upi'],
             'amountReceived' => $this->paymentMethod === 'cash' && $bill['total'] > 0
                 ? ['bail', 'required', 'numeric', 'min:'.number_format($bill['total'], 2, '.', '')]
                 : ['nullable'],
         ], [
             'paymentMethod.required' => 'Choose how the guest is paying.',
-            'paymentMethod.in' => 'Choose cash, card, or UPI.',
+            'paymentMethod.in' => 'Choose cash, RazorPay, or UPI.',
             'amountReceived.required' => 'Enter the amount received.',
             'amountReceived.numeric' => 'Amount received must be a number.',
             'amountReceived.min' => 'Amount received must cover the bill of ₹'.number_format($bill['total'], 2).'.',
         ]);
 
-        DB::transaction(function () use ($order, $bill) {
-            // UPDATE orders SET status = 'paid', paid_at = now() ... WHERE id = ?
-            $order->update([
+        // Razorpay is not collected here. A ₹0 bill has nothing to charge, so it
+        // skips the payment window and is recorded like cash.
+        if ($this->paymentMethod === 'razorpay' && $bill['total'] > 0) {
+            $this->startRazorpay($order, $bill);
+
+            return;
+        }
+
+        $this->recordPayment($order, $bill);
+    }
+
+    /**
+     * Step 1 of a Razorpay payment: create the order, then open the window.
+     *
+     * The bill total is read from the database in paise (₹1 = 100 paise).
+     * The browser cannot send its own price. The table stays occupied until
+     * confirmRazorpay() checks the signature.
+     */
+    protected function startRazorpay(Order $order, array $bill): void
+    {
+        // Same values the gateway sends. env() is read in config/services.php,
+        // because a cached config file would ignore the .env file.
+        if (blank(config('services.razorpay.key')) || blank(config('services.razorpay.secret'))) {
+            $this->addError('paymentMethod', 'Razorpay is not set up yet. Add RAZOR_KEY and RAZOR_SECRET to the .env file.');
+
+            return;
+        }
+
+        $amountInPaise = (int) round($bill['total'] * 100);
+
+        // Razorpay refuses anything under ₹1. A tiny leftover is easier to take in cash.
+        if ($amountInPaise < 100) {
+            $this->addError('paymentMethod', 'Razorpay cannot collect less than ₹1.00. Take this bill in cash.');
+
+            return;
+        }
+        // Create the Razorpay order with the key id and secret from config.
+        // An empty secret makes Razorpay answer "Authentication failed".
+        try {
+            $razorpayOrderId = $this->razorpay->createOrder($amountInPaise, (string) $order->order_number);
+        } catch (BadRequestError) {
+            $this->addError('paymentMethod', 'Razorpay refused these API keys. Check RAZOR_KEY and RAZOR_SECRET in the .env file.');
+
+            return;
+        }
+
+        // Remember this id. The callback is accepted only when it names the same one,
+        // so a payment made for a cheaper order cannot close this table.
+        $order->update(['razorpay_order_id' => $razorpayOrderId]);
+
+        $this->awaitingRazorpay = true;
+
+        // The key id is public. The secret is not included in this event.
+        $this->dispatch(
+            'open-razorpay',
+            key: (string) config('services.razorpay.key'),
+            amount: $amountInPaise,
+            currency: 'INR',
+            name: (string) config('app.name'),
+            description: 'Table '.$this->info['table_name'].' · #'.$order->order_number,
+            orderId: $razorpayOrderId,
+            // prefillName: (string) ($this->info['customer_name'] ?? ''),
+        );
+    }
+
+    /**
+     * Step 2 of a Razorpay payment. The window sends three values back.
+     * They are trusted only after the signature matches the secret.
+     */
+    public function confirmRazorpay(string $paymentId, string $orderId, string $signature): void
+    {
+        $order = Order::where('status', 'open')->find($this->info['order_id'] ?? null);
+
+        if (! $order) {
+            session()->forget('order');
+            $this->redirect(route('select-table'));
+
+            return;
+        }
+
+        if ($order->razorpay_order_id === null || $order->razorpay_order_id !== $orderId) {
+            $this->awaitingRazorpay = false;
+            $this->addError('paymentMethod', 'This payment does not match the open bill.');
+
+            return;
+        }
+
+        try {
+            $this->razorpay->verifyPayment($orderId, $paymentId, $signature);
+        } catch (SignatureVerificationError) {
+            $this->awaitingRazorpay = false;
+            $this->addError('paymentMethod', 'Razorpay could not confirm this payment. The table is still open.');
+
+            return;
+        }
+
+        // Ignore a radio change that happened while the window was open.
+        $this->paymentMethod = 'razorpay';
+        $this->recordPayment($order, $this->billFor($order), $paymentId);
+    }
+
+    /**
+     * The cashier closed the Razorpay window without paying.
+     * The bill stays open so they can try again or take cash.
+     */
+    public function razorpayDismissed(): void
+    {
+        $this->awaitingRazorpay = false;
+    }
+
+    /**
+     * Mark the bill paid and free the table. Cash, UPI, and a verified
+     * Razorpay payment all finish here.
+     */
+    protected function recordPayment(Order $order, array $bill, ?string $razorpayPaymentId = null): void
+    {
+        DB::transaction(function () use ($order, $bill, $razorpayPaymentId) {
+            $attributes = [
                 'subtotal' => $bill['subtotal'],
                 'total_amount' => $bill['total'],
                 'status' => 'paid',
                 'payment_method' => $this->paymentMethod,
                 'billed_at' => now(),
                 'paid_at' => now(),
-            ]);
+            ];
+
+            if ($razorpayPaymentId !== null) {
+                $attributes['razorpay_payment_id'] = $razorpayPaymentId;
+            }
+
+            $order->update($attributes);
 
             // The guests are leaving, so the table can be seated again.
             $order->cafeTable()->update(['status' => 'available']);
@@ -161,7 +302,7 @@ new class extends Component
     <div class="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-linear-to-r from-amber-500 to-orange-500 p-5 text-white shadow-sm">
         <div class="flex items-center gap-4">
             <div class="flex size-12 items-center justify-center rounded-lg bg-white/20">
-                <flux:icon.banknotes class="size-6" />
+                <flux:icon.currency-rupee class="size-6" />
             </div>
             <div>
                 <p class="text-sm text-white/80">Checkout · {{ $info['table_name'] }}</p>
@@ -253,10 +394,20 @@ new class extends Component
                 <div class="mt-4 space-y-4">
                     <flux:radio.group wire:model.live="paymentMethod" variant="segmented">
                         <flux:radio value="cash" label="Cash" icon="banknotes" />
-                        <flux:radio value="card" label="Card" icon="credit-card" />
                         <flux:radio value="upi" label="UPI" icon="device-phone-mobile" />
+                        <flux:radio value="razorpay" label="Razorpay" icon="credit-card" />
                     </flux:radio.group>
                     <flux:error name="paymentMethod" />
+
+                    @if($paymentMethod === 'razorpay' && $this->bill['total'] > 0)
+                        <flux:text class="text-sm">
+                            @if($awaitingRazorpay)
+                                Waiting for Razorpay. Close that window to choose another way to pay.
+                            @else
+                                A Razorpay window will open. The table stays occupied until that payment succeeds.
+                            @endif
+                        </flux:text>
+                    @endif
 
                     @if($paymentMethod === 'cash' && $this->bill['total'] > 0)
                         <flux:field>
@@ -291,13 +442,57 @@ new class extends Component
                         class="w-full"
                         wire:click="pay"
                         wire:loading.attr="disabled"
-                        wire:target="pay"
-                        :disabled="! $this->canPay"
+                        wire:target="pay,confirmRazorpay"
+                        :disabled="! $this->canPay || $awaitingRazorpay"
                     >
-                        Take payment
+                        {{ $paymentMethod === 'razorpay' ? 'Pay with Razorpay' : 'Take payment' }}
                     </flux:button>
                 </div>
             </aside>
         </div>
     @endif
 </div>
+
+{{-- Razorpay's own script. @assets loads it once, even if this page is visited again. --}}
+@assets
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+@endassets
+
+@script
+<script>
+    // pay() dispatches this after the server has created a Razorpay order.
+    // The payload has the public key id only. The secret never arrives here.
+    $wire.on('open-razorpay', (payment) => {
+        const checkout = new Razorpay({
+            key: payment.key,
+            amount: payment.amount,
+            currency: payment.currency,
+            name: payment.name,
+            description: payment.description,
+            order_id: payment.orderId,
+            prefill: {
+                name: payment.prefillName,
+            },
+            theme: {
+                color: '#4d23e6',
+            },
+            // Razorpay calls handler only after the guest pays.
+            // Closing the table still happens on the server, after the signature check.
+            handler(response) {
+                $wire.confirmRazorpay(
+                    response.razorpay_payment_id,
+                    response.razorpay_order_id,
+                    response.razorpay_signature,
+                );
+            },
+            modal: {
+                ondismiss() {
+                    $wire.razorpayDismissed();
+                },
+            },
+        });
+
+        checkout.open();
+    });
+</script>
+@endscript

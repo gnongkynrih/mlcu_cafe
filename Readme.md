@@ -177,3 +177,32 @@ return Application::configure(basePath: dirname(__DIR__))
 ## Take Order page
 
 See [ORDER-PAGE.md](ORDER-PAGE.md) for a step-by-step explanation of the cart, Send to Kitchen, and checkout.
+
+
+PAYMENT GATEWAY
+install razorpay
+composer require razorpay/razorpay
+
+//register with razor pay and generate test API keys
+//add the keys to the .env file
+RAZORPAY_KEY=your_key
+RAZORPAY_SECRET=your_secret
+
+For Razorpay, Take payment should:
+
+Create a Razorpay order on the server for the bill total, in paise.
+Open Razorpay Checkout in the browser.
+Mark the cafe order paid and free the table only after the server verifies Razorpay's signature.
+
+Razor treates amount is paise so 100 = 1 rupee
+
+Popular Test Cards (Indian Payments)Use any future expiry date and any random CVV (e.g., 123 or 999).Card Network Card Number
+
+4111 1111 1111 1111 
+Domestic Mastercard 5267 3181 8797 5449 
+Domestic Mastercard 5555 5555 5555 4444
+
+After entering card details:Razorpay shows a mock bank page. Enter any OTP (4–10 digits) → Success. Enter short OTP (less than 4 digits) → Failure.
+
+for internetbanking use 
+test
