@@ -206,3 +206,6 @@ After entering card details:Razorpay shows a mock bank page. Enter any OTP (4–
 
 for internetbanking use 
 test
+
+TO GENERATE PDF WE WILL USE LARAVEL/DOMPDF
+composer require barryvdh/laravel-dompdf

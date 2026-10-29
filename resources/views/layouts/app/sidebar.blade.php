@@ -30,6 +30,13 @@
             </flux:sidebar.nav>
             @role('admin')
             <flux:sidebar.nav>
+                <flux:sidebar.group heading="Reports" class="grid">
+                    <flux:sidebar.item icon="chart-bar" href="{{ route('sale-report') }}" :current="request()->routeIs('sale-report')">
+                        Sale Report
+                    </flux:sidebar.item>
+                </flux:sidebar.group>
+            </flux:sidebar.nav>
+            <flux:sidebar.nav>
                 <flux:sidebar.group heading="Admin" class="grid">
                     <flux:sidebar.item icon="tag" href="{{ route('category-management') }}" :current="request()->routeIs('category-management')">
                         Categories

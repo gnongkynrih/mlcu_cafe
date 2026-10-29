@@ -4,7 +4,6 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Services\RazorpayGateway;
 use Illuminate\Support\Facades\DB;
-use Livewire\Attributes\Computed;
 use Livewire\Component;
 use Razorpay\Api\Errors\BadRequestError;
 use Razorpay\Api\Errors\SignatureVerificationError;
@@ -22,7 +21,8 @@ new class extends Component
     // True while the Razorpay window is open, so Take payment cannot run twice.
     public bool $awaitingRazorpay = false;
 
-    // Re-injected on every request. Not a public property, so it is not sent to the browser.
+    // RazorpayGateway talks to Razorpay. boot() fills this in on every request.
+    // It is protected, so Livewire does not send it to the browser.
     protected RazorpayGateway $razorpay;
 
     public function boot(RazorpayGateway $razorpay): void
@@ -47,11 +47,8 @@ new class extends Component
         $this->billItems = $this->getBillItems();
     }
 
-    /**
-     * Items the guest still has to pay for. Cancelled lines stay in the
-     * database, but they are not part of the bill.
-     */
-    
+    // Items the guest still has to pay for.
+    // Cancelled lines stay in the database, but they are left off the bill.
     public function getBillItems()
     {
         return OrderItem::where('order_id', $this->info['order_id'])
@@ -60,50 +57,48 @@ new class extends Component
             ->get();
     }
 
-    /**
-     * @return array{subtotal: float, tax: float, discount: float, total: float}
-     */
-    #[Computed]
-    public function bill(): array
-    {
-        return $this->billFor($this->order);
-    }
-
-    #[Computed]
+    // The open order, read from the database each time.
+    // The Blade file calls this as $this->order(). Parentheses mean it is a normal method.
     public function order(): Order
     {
         return Order::where('status', 'open')->findOrFail($this->info['order_id']);
     }
 
-    /**
-     * Cash needs an amount that covers the bill. UPI and Razorpay are taken
-     * for the exact total, so no amount is asked.
-     */
-    #[Computed]
+    // Subtotal, tax, discount, and total.
+    // The Blade file calls this as $this->bill(). The browser cannot type these numbers in.
+    public function bill(): array
+    {
+        return $this->billFor($this->order());
+    }
+
+    // True when the pay button should be clickable.
+    // Cash must cover the total. UPI and Razorpay charge the exact total, so no amount is asked.
     public function canPay(): bool
     {
         if ($this->billItems->isEmpty()) {
             return false;
         }
 
-        if ($this->paymentMethod !== 'cash' || $this->bill['total'] <= 0) {
+        if ($this->paymentMethod !== 'cash' || $this->bill()['total'] <= 0) {
             return true;
         }
 
         return is_numeric($this->amountReceived)
-            && round((float) $this->amountReceived, 2) >= $this->bill['total'];
+            && round((float) $this->amountReceived, 2) >= $this->bill()['total'];
     }
 
-    #[Computed]
+    // Money to hand back. Only cash can have change. The Blade file calls this as $this->changeDue().
     public function changeDue(): float
     {
         if ($this->paymentMethod !== 'cash' || ! is_numeric($this->amountReceived)) {
             return 0;
         }
 
-        return round(max(0, (float) $this->amountReceived - $this->bill['total']), 2);
+        return round(max(0, (float) $this->amountReceived - $this->bill()['total']), 2);
     }
 
+    // Runs when the cashier clicks the pay button.
+    // The total is calculated again here, from the database, not from the page.
     public function pay(): void
     {
         $order = Order::where('status', 'open')->find($this->info['order_id'] ?? null);
@@ -195,6 +190,7 @@ new class extends Component
             name: (string) config('app.name'),
             description: 'Table '.$this->info['table_name'].' · #'.$order->order_number,
             orderId: $razorpayOrderId,
+            // Uncomment the next line to put the guest's name into the Razorpay window.
             // prefillName: (string) ($this->info['customer_name'] ?? ''),
         );
     }
@@ -271,9 +267,20 @@ new class extends Component
         });
 
         session()->forget('order');
-        session()->flash('status', 'Payment received for table '.$this->info['table_name'].'. The table is free.');
 
-        $this->redirect(route('select-table'));
+        // Change is not stored on the order. Flash it once so the success page can show it.
+        // Use this $bill. Do not call bill() here: the order is already paid, and bill()
+        // only looks up orders that are still open.
+        if ($this->paymentMethod === 'cash' && $bill['total'] > 0) {
+            $received = round((float) $this->amountReceived, 2);
+
+            session()->flash('cash', [
+                'received' => $received,
+                'change' => round(max(0, $received - $bill['total']), 2),
+            ]);
+        }
+        //go to the success page
+        $this->redirect(route('checkout.success', $order));
     }
 
     /**
@@ -306,7 +313,8 @@ new class extends Component
             </div>
             <div>
                 <p class="text-sm text-white/80">Checkout · {{ $info['table_name'] }}</p>
-                <p class="text-2xl font-bold leading-tight">₹{{ number_format($this->bill['total'], 2) }}</p>
+                {{-- bill() and order() are normal methods in the class above. The () runs them. --}}
+                <p class="text-2xl font-bold leading-tight">₹{{ number_format($this->bill()['total'], 2) }}</p>
             </div>
         </div>
 
@@ -319,7 +327,7 @@ new class extends Component
             <span class="flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1">
                 <flux:icon.users variant="micro" /> {{ $info['guests'] }} {{ Str::plural('guest', $info['guests']) }}
             </span>
-            <span class="rounded-full bg-white/20 px-3 py-1 font-medium tabular-nums">#{{ $this->order->order_number }}</span>
+            <span class="rounded-full bg-white/20 px-3 py-1 font-medium tabular-nums">#{{ $this->order()->order_number }}</span>
             <flux:button href="{{ route('take-order') }}" size="sm" variant="ghost" icon="arrow-left" class="text-white! hover:bg-white/20!">
                 Back to order
             </flux:button>
@@ -362,27 +370,27 @@ new class extends Component
                 </ul>
 
                 <div class="space-y-2 border-t border-dashed border-stone-300 bg-stone-50 px-5 py-4 text-sm dark:border-zinc-700 dark:bg-zinc-800/40">
-                    @if($this->bill['tax'] > 0 || $this->bill['discount'] > 0)
+                    @if($this->bill()['tax'] > 0 || $this->bill()['discount'] > 0)
                         <div class="flex justify-between">
                             <flux:text>Subtotal</flux:text>
-                            <span class="tabular-nums">₹{{ number_format($this->bill['subtotal'], 2) }}</span>
+                            <span class="tabular-nums">₹{{ number_format($this->bill()['subtotal'], 2) }}</span>
                         </div>
                     @endif
-                    @if($this->bill['tax'] > 0)
+                    @if($this->bill()['tax'] > 0)
                         <div class="flex justify-between">
                             <flux:text>Tax</flux:text>
-                            <span class="tabular-nums">₹{{ number_format($this->bill['tax'], 2) }}</span>
+                            <span class="tabular-nums">₹{{ number_format($this->bill()['tax'], 2) }}</span>
                         </div>
                     @endif
-                    @if($this->bill['discount'] > 0)
+                    @if($this->bill()['discount'] > 0)
                         <div class="flex justify-between">
                             <flux:text>Discount</flux:text>
-                            <span class="tabular-nums text-emerald-600 dark:text-emerald-400">−₹{{ number_format($this->bill['discount'], 2) }}</span>
+                            <span class="tabular-nums text-emerald-600 dark:text-emerald-400">−₹{{ number_format($this->bill()['discount'], 2) }}</span>
                         </div>
                     @endif
                     <div class="flex items-end justify-between pt-1 text-lg font-bold">
                         <span>Total</span>
-                        <span class="tabular-nums text-amber-600 dark:text-amber-400">₹{{ number_format($this->bill['total'], 2) }}</span>
+                        <span class="tabular-nums text-amber-600 dark:text-amber-400">₹{{ number_format($this->bill()['total'], 2) }}</span>
                     </div>
                 </div>
             </section>
@@ -399,7 +407,7 @@ new class extends Component
                     </flux:radio.group>
                     <flux:error name="paymentMethod" />
 
-                    @if($paymentMethod === 'razorpay' && $this->bill['total'] > 0)
+                    @if($paymentMethod === 'razorpay' && $this->bill()['total'] > 0)
                         <flux:text class="text-sm">
                             @if($awaitingRazorpay)
                                 Waiting for Razorpay. Close that window to choose another way to pay.
@@ -409,7 +417,7 @@ new class extends Component
                         </flux:text>
                     @endif
 
-                    @if($paymentMethod === 'cash' && $this->bill['total'] > 0)
+                    @if($paymentMethod === 'cash' && $this->bill()['total'] > 0)
                         <flux:field>
                             <flux:label>Amount received</flux:label>
                             <flux:input
@@ -424,14 +432,14 @@ new class extends Component
                             <flux:error name="amountReceived" />
                         </flux:field>
 
-                        @if(is_numeric($amountReceived) && round((float) $amountReceived, 2) >= $this->bill['total'])
+                        @if(is_numeric($amountReceived) && round((float) $amountReceived, 2) >= $this->bill()['total'])
                             <div class="flex items-center justify-between rounded-lg bg-emerald-50 px-4 py-3 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300">
                                 <span class="text-sm font-medium">Change</span>
-                                <span class="text-lg font-bold tabular-nums">₹{{ number_format($this->changeDue, 2) }}</span>
+                                <span class="text-lg font-bold tabular-nums">₹{{ number_format($this->changeDue(), 2) }}</span>
                             </div>
                         @elseif(is_numeric($amountReceived))
                             <flux:text class="text-sm text-red-600 dark:text-red-400">
-                                ₹{{ number_format($this->bill['total'] - (float) $amountReceived, 2) }} still due
+                                ₹{{ number_format($this->bill()['total'] - (float) $amountReceived, 2) }} still due
                             </flux:text>
                         @endif
                     @endif
@@ -443,7 +451,7 @@ new class extends Component
                         wire:click="pay"
                         wire:loading.attr="disabled"
                         wire:target="pay,confirmRazorpay"
-                        :disabled="! $this->canPay || $awaitingRazorpay"
+                        :disabled="! $this->canPay() || $awaitingRazorpay"
                     >
                         {{ $paymentMethod === 'razorpay' ? 'Pay with Razorpay' : 'Take payment' }}
                     </flux:button>
@@ -470,8 +478,9 @@ new class extends Component
             name: payment.name,
             description: payment.description,
             order_id: payment.orderId,
+            // prefillName is only sent if the PHP line above is uncommented.
             prefill: {
-                name: payment.prefillName,
+                name: payment.prefillName ?? '',
             },
             theme: {
                 color: '#4d23e6',

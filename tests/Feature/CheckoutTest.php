@@ -5,10 +5,12 @@ use App\Models\Category;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\User;
 use App\Services\RazorpayGateway;
 use Livewire\Livewire;
 use Razorpay\Api\Errors\BadRequestError;
 use Razorpay\Api\Errors\SignatureVerificationError;
+use Spatie\Permission\Models\Permission;
 
 use function Pest\Laravel\mock;
 
@@ -103,7 +105,7 @@ test('paying by upi marks the order paid and frees the table', function () {
     Livewire::test('pages::checkout')
         ->set('paymentMethod', 'upi')
         ->call('pay')
-        ->assertRedirect(route('select-table'));
+        ->assertRedirect(route('checkout.success', $this->order));
 
     $paid = $this->order->fresh();
 
@@ -116,7 +118,7 @@ test('paying by upi marks the order paid and frees the table', function () {
         ->and($paid->billed_at->format('Y-m-d H:i:s'))->toBe(now()->format('Y-m-d H:i:s'))
         ->and($this->table->fresh()->status)->toBe('available')
         ->and(session('order'))->toBeNull()
-        ->and(session('status'))->toBe('Payment received for table T1. The table is free.');
+        ->and(session('cash'))->toBeNull();
 });
 
 test('paying by cash shows the change and records the payment when the amount covers the bill', function () {
@@ -127,12 +129,13 @@ test('paying by cash shows the change and records the payment when the amount co
         ->set('amountReceived', '80')
         ->assertSee('30.00')
         ->call('pay')
-        ->assertRedirect(route('select-table'));
+        ->assertRedirect(route('checkout.success', $this->order));
 
     expect($this->order->fresh())
         ->status->toBe('paid')
         ->payment_method->toBe('cash')
-        ->total_amount->toEqual(50);
+        ->total_amount->toEqual(50)
+        ->and(session('cash'))->toBe(['received' => 80.0, 'change' => 30.0]);
 });
 
 test('a fully discounted bill can be paid without cash tendered', function () {
@@ -142,7 +145,7 @@ test('a fully discounted bill can be paid without cash tendered', function () {
     Livewire::test('pages::checkout')
         ->set('paymentMethod', 'cash')
         ->call('pay')
-        ->assertRedirect(route('select-table'));
+        ->assertRedirect(route('checkout.success', $this->order));
 
     expect($this->order->fresh())
         ->status->toBe('paid')
@@ -256,7 +259,6 @@ test('paying with razorpay opens checkout and leaves the table occupied', functi
                 ->and($params['amount'])->toBe(5000)
                 ->and($params['currency'])->toBe('INR')
                 ->and($params['orderId'])->toBe('order_test_123')
-                ->and($params['prefillName'])->toBe('Ana')
                 ->and(json_encode($params))->not->toContain('rzp_test_secret');
 
             return true;
@@ -289,7 +291,7 @@ test('a confirmed razorpay payment marks the order paid and frees the table', fu
         ->call('pay')
         ->set('paymentMethod', 'cash')
         ->call('confirmRazorpay', 'pay_test_123', 'order_test_123', 'signed')
-        ->assertRedirect(route('select-table'));
+        ->assertRedirect(route('checkout.success', $this->order));
 
     $paid = $this->order->fresh();
 
@@ -416,11 +418,35 @@ test('a fully discounted razorpay bill is paid without opening checkout', functi
         ->set('paymentMethod', 'razorpay')
         ->call('pay')
         ->assertNotDispatched('open-razorpay')
-        ->assertRedirect(route('select-table'));
+        ->assertRedirect(route('checkout.success', $this->order));
 
     expect($this->order->fresh())
         ->status->toBe('paid')
         ->payment_method->toBe('razorpay')
         ->total_amount->toEqual(0)
         ->and($this->table->fresh()->status)->toBe('available');
+});
+
+test('the success page shows the paid bill and the change for cash', function () {
+    billItem($this->order, ['item_name' => 'Latte']);
+    billItem($this->order, ['item_name' => 'Cake', 'status' => 'cancelled']);
+    $this->order->update(['status' => 'paid', 'payment_method' => 'cash', 'subtotal' => 50, 'total_amount' => 50, 'paid_at' => now()]);
+    session()->flash('cash', ['received' => 80.0, 'change' => 30.0]);
+
+    Livewire::test('pages::checkout-success', ['order' => $this->order])
+        ->assertSee('Payment successful')
+        ->assertSee('#1000000001')
+        ->assertSee('Latte')
+        ->assertDontSee('Cake')
+        ->assertSee('Change ₹30.00')
+        ->assertSee(route('orders.receipt', $this->order));
+});
+
+test('the success page is not found for an order that is still open', function () {
+    $user = User::factory()->create();
+    $user->givePermissionTo(Permission::findOrCreate('take order'));
+
+    $this->actingAs($user)
+        ->get(route('checkout.success', $this->order))
+        ->assertNotFound();
 });
