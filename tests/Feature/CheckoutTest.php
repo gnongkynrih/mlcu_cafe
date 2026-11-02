@@ -1,5 +1,6 @@
 <?php
 
+use App\Mail\PaymentReceipt;
 use App\Models\CafeTable;
 use App\Models\Category;
 use App\Models\MenuItem;
@@ -7,6 +8,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\User;
 use App\Services\RazorpayGateway;
+use Illuminate\Support\Facades\Mail;
 use Livewire\Livewire;
 use Razorpay\Api\Errors\BadRequestError;
 use Razorpay\Api\Errors\SignatureVerificationError;
@@ -440,6 +442,67 @@ test('the success page shows the paid bill and the change for cash', function ()
         ->assertDontSee('Cake')
         ->assertSee('Change ₹30.00')
         ->assertSee(route('orders.receipt', $this->order));
+});
+
+test('send bill emails the paid receipt to the address the cashier enters', function () {
+    billItem($this->order, ['item_name' => 'Latte']);
+    $this->order->update(['status' => 'paid', 'payment_method' => 'cash', 'subtotal' => 50, 'total_amount' => 50, 'paid_at' => now()]);
+    Mail::fake();
+
+    Livewire::test('pages::checkout-success', ['order' => $this->order])
+        ->assertSee('Send bill')
+        ->set('email', 'guest@example.com')
+        ->call('sendBill')
+        ->assertHasNoErrors()
+        ->assertSet('showSendBill', false)
+        ->assertSee('A copy was emailed to guest@example.com.');
+
+    Mail::assertSent(PaymentReceipt::class, function (PaymentReceipt $mail) {
+        return $mail->hasTo('guest@example.com')
+            && $mail->order->is($this->order);
+    });
+});
+
+test('send bill rejects an address that is not an email', function () {
+    $this->order->update(['status' => 'paid', 'payment_method' => 'cash', 'paid_at' => now()]);
+    Mail::fake();
+
+    Livewire::test('pages::checkout-success', ['order' => $this->order])
+        ->set('email', 'not-an-email')
+        ->call('sendBill')
+        ->assertHasErrors(['email' => 'email'])
+        ->assertSee('Enter a valid email address.');
+
+    Mail::assertNothingSent();
+});
+
+test('send bill explains that gmail is not set up when the smtp password is missing', function () {
+    $this->order->update(['status' => 'paid', 'payment_method' => 'cash', 'paid_at' => now()]);
+    config([
+        'mail.default' => 'smtp',
+        'mail.mailers.smtp.username' => null,
+        'mail.mailers.smtp.password' => null,
+    ]);
+    Mail::fake();
+
+    Livewire::test('pages::checkout-success', ['order' => $this->order])
+        ->set('email', 'guest@example.com')
+        ->call('sendBill')
+        ->assertSee('Gmail is not set up yet.');
+
+    Mail::assertNothingSent();
+});
+
+test('the receipt email names the bill and attaches the pdf', function () {
+    billItem($this->order, ['item_name' => 'Latte']);
+    $this->order->update(['status' => 'paid', 'payment_method' => 'cash', 'subtotal' => 50, 'total_amount' => 50, 'paid_at' => now()]);
+    $order = $this->order->fresh()->load(['cafeTable', 'orderItems']);
+
+    $mail = new PaymentReceipt($order);
+
+    $mail->assertSeeInHtml('#1000000001');
+    $mail->assertSeeInHtml('Latte');
+    expect($mail->attachments()[0]->as)->toBe('receipt-1000000001.pdf');
 });
 
 test('the success page is not found for an order that is still open', function () {

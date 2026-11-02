@@ -209,3 +209,19 @@ test
 
 TO GENERATE PDF WE WILL USE LARAVEL/DOMPDF
 composer require barryvdh/laravel-dompdf
+    use Barryvdh\DomPDF\Facade\Pdf;
+
+    $pdf = Pdf::loadView('pdf.invoice', $data);
+    return $pdf->download('invoice.pdf');
+
+FOR EXPORTING TO EXCEL WE WILL USE maatwebsite/excel
+
+https://docs.laravel-excel.com/3.1/getting-started/installation.html
+
+composer require maatwebsite/excel
+
+To publish the config, run the vendor publish command:
+php artisan vendor:publish --provider="Maatwebsite\Excel\ExcelServiceProvider" --tag=config
+
+to make the export class we use the command
+php artisan make:export ClassName

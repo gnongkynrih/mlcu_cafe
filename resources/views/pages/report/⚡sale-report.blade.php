@@ -2,7 +2,10 @@
 
 use Livewire\Component;
 use Illuminate\Support\Carbon; //for date format
+use App\Exports\OrderExport;
 use App\Models\Order;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Maatwebsite\Excel\Facades\Excel;
 
 new class extends Component
 {
@@ -15,18 +18,55 @@ new class extends Component
     }
     
     public function generateReport(){
-       $this->orders = Order::selectRaw('SUM(total_amount) as total_amount, DATE(paid_at) as paid_at')
-        ->whereRaw('DATE(paid_at) BETWEEN ? AND ?', [$this->dateFrom, $this->dateTo])
-        ->groupByRaw('DATE(paid_at)')
-        ->get();
         $this->reportType='summary';
+        $this->orders = $this->fetchOrders();
     }
     public function generateDetailsReport(){
-        $this->orders = Order::select('total_amount','razorpay_payment_id','paid_at',)
-        ->whereRaw('DATE(paid_at) BETWEEN ? AND ?', [$this->dateFrom, $this->dateTo])
-        ->orderBy('paid_at', 'asc')
-        ->get();
         $this->reportType='details';
+        $this->orders = $this->fetchOrders();
+    }
+
+    /**
+     * Livewire rehydrates Eloquent collections by primary key, and these queries
+     * select no id, so the report must be re-queried on every request that needs it.
+     */
+    private function fetchOrders(){
+        if ($this->reportType === 'summary') {
+            return Order::selectRaw('SUM(total_amount) as total_amount, DATE(paid_at) as paid_at')
+                ->whereRaw('DATE(paid_at) BETWEEN ? AND ?', [$this->dateFrom, $this->dateTo])
+                ->groupByRaw('DATE(paid_at)')
+                ->get();
+        }
+
+        return Order::select('total_amount','razorpay_payment_id','paid_at')
+            ->whereRaw('DATE(paid_at) BETWEEN ? AND ?', [$this->dateFrom, $this->dateTo])
+            ->orderBy('paid_at', 'asc')
+            ->get();
+    }
+
+    public function downloadPdf(){
+        $this->orders = $this->fetchOrders();
+        $pdf = Pdf::loadView('pdf.summary-sale-report', ['orders' => $this->orders,'reportType' => $this->reportType]);
+
+        return response()->streamDownload(function () use ($pdf) {
+            echo $pdf->output();
+        }, 'sale-report.pdf');
+    }
+    
+    /**
+     * Download the report currently on screen as an Excel file.
+     *
+     * Step 1: run the query again (Livewire does not keep the rows between clicks).
+     * Step 2: hand the rows and the report type to OrderExport, which builds the sheet.
+     * Step 3: return the download. Livewire sees it is a file and sends it to the browser.
+     */
+    public function downloadExcel(){
+        $this->orders = $this->fetchOrders();
+
+        // e.g. sale-report-summary-2026-10-01-to-2026-10-30.xlsx
+        $fileName = "sale-report-{$this->reportType}-{$this->dateFrom}-to-{$this->dateTo}.xlsx";
+
+        return Excel::download(new OrderExport($this->orders, $this->reportType), $fileName);
     }
 };
 ?>
@@ -59,6 +99,14 @@ new class extends Component
                 <flux:button wire:click="generateDetailsReport" wire:loading.attr="disabled" wire:target="generateDetailsReport" icon="list-bullet">
                     Detail
                 </flux:button>
+                @if($orders)
+                    <flux:button wire:click="downloadPdf" wire:loading.attr="disabled" wire:target="downloadPdf" icon="document-duplicate">
+                        PDF
+                    </flux:button>
+                     <flux:button wire:click="downloadExcel" wire:loading.attr="disabled" wire:target="downloadExcel" icon="arrow-down-tray">
+                        Excel
+                    </flux:button>
+                @endif
             </div>
         </div>
     </div>
@@ -97,7 +145,7 @@ new class extends Component
                             @forelse($orders as $order)
                                 <div wire:key="summary-{{ $loop->index }}" class="grid grid-cols-12 items-center gap-4 px-6 py-3">
                                     <p class="col-span-8 font-medium text-stone-800 dark:text-zinc-100">
-                                        {{ $order->paid_at }}
+                                        {{ $order->paid_at->format('d M Y') }}
                                     </p>
                                     <p class="col-span-4 text-right font-semibold tabular-nums text-stone-800 dark:text-zinc-100">
                                         ₹{{ number_format((float) $order->total_amount, 2) }}
@@ -123,7 +171,7 @@ new class extends Component
                             @forelse($orders as $order)
                                 <div wire:key="detail-{{ $loop->index }}" class="grid grid-cols-12 items-center gap-4 px-6 py-3">
                                     <p class="col-span-4 font-medium text-stone-800 dark:text-zinc-100">
-                                        {{ $order->paid_at }}
+                                        {{ $order->paid_at->format('d M Y, h:i A') }}
                                     </p>
                                     <p class="col-span-5 truncate text-sm text-stone-500 dark:text-zinc-400">
                                         {{ $order->razorpay_payment_id ?: '—' }}
