@@ -225,3 +225,12 @@ php artisan vendor:publish --provider="Maatwebsite\Excel\ExcelServiceProvider" -
 
 to make the export class we use the command
 php artisan make:export ClassName
+
+FOR CHARTS AND GRAPHS WE WILL USE CHART.JS
+https://www.chartjs.org/docs/latest/getting-started/installation.html
+
+pnpm install chart.js. //npm install chart.js
+
+In resources/js/app.js
+import Chart from 'chart.js/auto';
+window.Chart = Chart;   // make it available globally
