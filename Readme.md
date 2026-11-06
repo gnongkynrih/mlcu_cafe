@@ -234,3 +234,33 @@ pnpm install chart.js. //npm install chart.js
 In resources/js/app.js
 import Chart from 'chart.js/auto';
 window.Chart = Chart;   // make it available globally
+
+
+TO SEND EMAIL
+1. Create a Gmail App Password
+Enable 2-Step Verification on your Google Account.
+
+Go to Google Account → Security → App passwords.
+
+Create an app password, for example named Laravel SMTP.
+
+Copy the 16-character password immediately; Google will not show it again.
+abcd efgh ijkl mnop
+
+NOW UPDATE THE .ENV FILE WITH THE FOLLOWING:
+MAIL_MAILER=smtp
+MAIL_SCHEME=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=youremail@gmail.com
+MAIL_PASSWORD=abcdefghijklmnop #YOUR APP PASSWORD
+MAIL_FROM_ADDRESS=youremail@gmail.com
+MAIL_FROM_NAME="${APP_NAME}"
+
+WE FIRST CREATE THE MAILABLE CLASS
+php artisan make:mail WelcomeEmail
+
+and then we can use it in our code like this:
+Mail::to($this->email)->send(new WelcomeEmail($name));
+
+the view file will be in resources/views/mail/welcome.blade.php

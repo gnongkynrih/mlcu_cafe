@@ -1,6 +1,7 @@
 <?php
 
 use App\Mail\PaymentReceipt;
+use App\Mail\ExampleMail;
 use App\Models\Order;
 use Illuminate\Support\Facades\Mail;
 use Livewire\Component;
@@ -8,14 +9,35 @@ use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 new class extends Component
 {
+    /*
+    |--------------------------------------------------------------------------
+    | Public properties
+    |--------------------------------------------------------------------------
+    | Every public property is shared with the Blade below AND kept by
+    | Livewire between clicks. wire:model="email" in the form writes straight
+    | into $email, and wire:model="showSendReceipt" opens or closes the modal.
+    */
+
     // The paid order from the URL: /checkout/{order}/success.
-    // Livewire finds that row and passes it into mount() below.
+    // Livewire finds that row (route model binding) and passes it into mount() below.
     public Order $order;
 
     // Cash received and the change to hand back.
     // Checkout flashes this for one request only. UPI and Razorpay leave it empty.
     public ?array $cash = null;
 
+    // The client's address, typed into the Send receipt modal.
+    public string $email = '';
+
+    // true = the modal is open. The Send receipt button sets it to true.
+    public bool $showSendReceipt = false;
+
+    // Filled after the mail server accepts the email, so the page can say where it went.
+    public ?string $receiptSentTo = null;
+
+    /**
+     * Runs once, when the page first loads.
+     */
     public function mount(Order $order): void
     {
         // This page is only for a finished payment. Anything else is a 404.
@@ -33,22 +55,23 @@ new class extends Component
         $this->cash = session('cash');
     }
 
-    // The address typed into the Send bill window.
-    public string $email = '';
-
-    public bool $showSendBill = false;
-
-    // Filled after Gmail accepts the message, so the page can say where it went.
-    public ?string $billSentTo = null;
-
     /**
-     * Email this paid bill to the address the cashier typed.
+     * Email the PDF receipt to the address typed in the modal.
+     *
+     * Runs when the modal's form is submitted (wire:submit="sendReceipt").
+     *
+     *  Step 1: load the order again from the database (never trust old data).
+     *  Step 2: check the email address (validation).
+     *  Step 3: check the mail settings in .env are filled in.
+     *  Step 4: send the email. PaymentReceipt (app/Mail) builds it and attaches the PDF.
+     *  Step 5: close the modal and show "Receipt sent".
      *
      * Mail::send() uses the mailer in .env. For this class that is Gmail:
      * smtp.gmail.com, with an App Password, not the normal Gmail password.
      */
-    public function sendBill(): void
+    public function sendReceipt(): void
     {
+        // Step 1: a fresh copy of the order, with the items for the PDF.
         $order = Order::with([
             'cafeTable',
             'orderItems' => fn ($query) => $query->where('status', '!=', 'cancelled')->orderBy('id'),
@@ -56,30 +79,38 @@ new class extends Component
 
         abort_unless($order && $order->status === 'paid', 404);
 
+        // Step 2: if a rule fails, validate() stops here and <flux:error name="email" />
+        // shows the message under the input. The modal stays open.
         $this->validate([
             'email' => ['required', 'email'],
         ], [
-            'email.required' => 'Enter the email address for the bill.',
+            'email.required' => 'Enter the client\'s email address.',
             'email.email' => 'Enter a valid email address.',
         ]);
 
-        // A personal Gmail account signs in with MAIL_USERNAME and an App Password.
+        // Step 3: a personal Gmail account signs in with MAIL_USERNAME and an App Password.
+        // Without them Gmail would refuse, so explain the fix instead of crashing.
         if (config('mail.default') === 'smtp' && (blank(config('mail.mailers.smtp.username')) || blank(config('mail.mailers.smtp.password')))) {
             $this->addError('email', 'Gmail is not set up yet. Add MAIL_USERNAME and MAIL_PASSWORD to the .env file. MAIL_PASSWORD must be a Gmail App Password.');
 
             return;
         }
 
+        // Step 4: send it. If Gmail says no (for example a wrong App Password),
+        // Laravel throws a TransportException. We catch it and show a message
+        // under the input, so the cashier sees the problem instead of an error page.
         try {
             Mail::to($this->email)->send(new PaymentReceipt($order));
+            //  Mail::to($this->email)->send(new ExampleMail('Gordon Nongkynrih'));
         } catch (TransportExceptionInterface) {
-            $this->addError('email', 'Gmail could not send this bill. Check the App Password and that MAIL_FROM_ADDRESS is the same Gmail address.');
+            $this->addError('email', 'Gmail could not send this receipt. Check the App Password and that MAIL_FROM_ADDRESS is the same Gmail address.');
 
             return;
         }
 
-        $this->billSentTo = $this->email;
-        $this->showSendBill = false;
+        // Step 5: remember where it went, close the modal, and empty the input for next time.
+        $this->receiptSentTo = $this->email;
+        $this->showSendReceipt = false;
         $this->reset('email');
     }
 };
@@ -171,8 +202,9 @@ new class extends Component
         </div>
     </section>
 
-    @if($billSentTo)
-        <flux:callout variant="success" icon="envelope" heading="Bill sent" text="A copy was emailed to {{ $billSentTo }}." />
+    {{-- Shown after sendReceipt() succeeds. --}}
+    @if($receiptSentTo)
+        <flux:callout variant="success" icon="envelope" heading="Receipt sent" text="The PDF receipt was emailed to {{ $receiptSentTo }}." />
     @endif
 
     <div class="flex flex-wrap gap-3">
@@ -180,25 +212,40 @@ new class extends Component
         <flux:button href="{{ route('orders.receipt', $order) }}" variant="primary" icon="arrow-down-tray" class="flex-1">
             Download receipt
         </flux:button>
-        {{-- Opens the small window below. The address is not stored on the order. --}}
-        <flux:button type="button" wire:click="$set('showSendBill', true)" icon="envelope" class="flex-1">
-            Send bill
+        {{--
+            $set('showSendReceipt', true) changes the property without writing a PHP method.
+            The modal below is tied to that property, so it opens.
+        --}}
+        <flux:button type="button" wire:click="$set('showSendReceipt', true)" icon="envelope" class="flex-1">
+            Send receipt
         </flux:button>
         <flux:button href="{{ route('select-table') }}" icon="squares-2x2" class="flex-1">
             Back to tables
         </flux:button>
     </div>
 
-    <flux:modal wire:model.self="showSendBill" name="send-bill" class="w-full md:w-md">
-        <form wire:submit="sendBill" class="space-y-6">
+    {{--
+        The Send receipt modal.
+
+        wire:model.self="showSendReceipt" links the modal to the property:
+          - showSendReceipt = true  → the modal opens
+          - Cancel, Esc or clicking outside → Flux sets it back to false
+
+        wire:submit="sendReceipt" runs the PHP method when Send is clicked or Enter is pressed.
+        The address is only used for this one email. It is not saved on the order.
+    --}}
+    <flux:modal wire:model.self="showSendReceipt" name="send-receipt" class="w-full md:w-md">
+        <form wire:submit="sendReceipt" class="space-y-6">
             <div>
-                <flux:heading size="lg">Send bill</flux:heading>
-                <flux:text class="mt-2">Where should receipt #{{ $order->order_number }} be emailed?</flux:text>
+                <flux:heading size="lg">Send receipt</flux:heading>
+                <flux:text class="mt-2">Receipt #{{ $order->order_number }} will be emailed as a PDF attachment.</flux:text>
             </div>
 
             <flux:field>
-                <flux:label>Email</flux:label>
-                <flux:input type="email" wire:model="email" placeholder="guest@example.com" icon="envelope" />
+                <flux:label>Client's email</flux:label>
+                {{-- wire:model sends the typed text to $email when the form is submitted. --}}
+                <flux:input type="email" wire:model="email" placeholder="guest@example.com" icon="envelope" autofocus />
+                {{-- Shows the validation or Gmail error for "email", if there is one. --}}
                 <flux:error name="email" />
             </flux:field>
 
@@ -206,8 +253,10 @@ new class extends Component
                 <flux:modal.close>
                     <flux:button type="button" variant="ghost">Cancel</flux:button>
                 </flux:modal.close>
-                <flux:button type="submit" variant="primary" icon="paper-airplane" wire:loading.attr="disabled" wire:target="sendBill">
-                    Send
+                {{-- wire:loading.attr="disabled" stops a double click from sending two emails. --}}
+                <flux:button type="submit" variant="primary" icon="paper-airplane" wire:loading.attr="disabled" wire:target="sendReceipt">
+                    <span wire:loading.remove wire:target="sendReceipt">Send</span>
+                    <span wire:loading wire:target="sendReceipt">Sending…</span>
                 </flux:button>
             </div>
         </form>

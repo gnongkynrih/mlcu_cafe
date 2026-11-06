@@ -13,6 +13,7 @@ use Livewire\Livewire;
 use Razorpay\Api\Errors\BadRequestError;
 use Razorpay\Api\Errors\SignatureVerificationError;
 use Spatie\Permission\Models\Permission;
+use Symfony\Component\Mailer\Exception\TransportException;
 
 use function Pest\Laravel\mock;
 
@@ -444,18 +445,20 @@ test('the success page shows the paid bill and the change for cash', function ()
         ->assertSee(route('orders.receipt', $this->order));
 });
 
-test('send bill emails the paid receipt to the address the cashier enters', function () {
+test('send receipt emails the pdf receipt to the client\'s address', function () {
     billItem($this->order, ['item_name' => 'Latte']);
     $this->order->update(['status' => 'paid', 'payment_method' => 'cash', 'subtotal' => 50, 'total_amount' => 50, 'paid_at' => now()]);
     Mail::fake();
 
     Livewire::test('pages::checkout-success', ['order' => $this->order])
-        ->assertSee('Send bill')
+        ->assertSee('Send receipt')
+        ->call('$set', 'showSendReceipt', true)
+        ->assertSet('showSendReceipt', true)
         ->set('email', 'guest@example.com')
-        ->call('sendBill')
+        ->call('sendReceipt')
         ->assertHasNoErrors()
-        ->assertSet('showSendBill', false)
-        ->assertSee('A copy was emailed to guest@example.com.');
+        ->assertSet('showSendReceipt', false)
+        ->assertSee('The PDF receipt was emailed to guest@example.com.');
 
     Mail::assertSent(PaymentReceipt::class, function (PaymentReceipt $mail) {
         return $mail->hasTo('guest@example.com')
@@ -463,20 +466,20 @@ test('send bill emails the paid receipt to the address the cashier enters', func
     });
 });
 
-test('send bill rejects an address that is not an email', function () {
+test('send receipt rejects an address that is not an email', function () {
     $this->order->update(['status' => 'paid', 'payment_method' => 'cash', 'paid_at' => now()]);
     Mail::fake();
 
     Livewire::test('pages::checkout-success', ['order' => $this->order])
         ->set('email', 'not-an-email')
-        ->call('sendBill')
+        ->call('sendReceipt')
         ->assertHasErrors(['email' => 'email'])
         ->assertSee('Enter a valid email address.');
 
     Mail::assertNothingSent();
 });
 
-test('send bill explains that gmail is not set up when the smtp password is missing', function () {
+test('send receipt explains that gmail is not set up when the smtp password is missing', function () {
     $this->order->update(['status' => 'paid', 'payment_method' => 'cash', 'paid_at' => now()]);
     config([
         'mail.default' => 'smtp',
@@ -487,10 +490,29 @@ test('send bill explains that gmail is not set up when the smtp password is miss
 
     Livewire::test('pages::checkout-success', ['order' => $this->order])
         ->set('email', 'guest@example.com')
-        ->call('sendBill')
+        ->call('sendReceipt')
         ->assertSee('Gmail is not set up yet.');
 
     Mail::assertNothingSent();
+});
+
+test('send receipt keeps the modal open with a message when gmail refuses the login', function () {
+    $this->order->update(['status' => 'paid', 'payment_method' => 'cash', 'paid_at' => now()]);
+    config([
+        'mail.default' => 'smtp',
+        'mail.mailers.smtp.username' => 'cafe@gmail.com',
+        'mail.mailers.smtp.password' => 'wrongapppassword',
+    ]);
+    Mail::shouldReceive('to')->once()->andThrow(new TransportException('535-5.7.8 Username and Password not accepted.'));
+
+    Livewire::test('pages::checkout-success', ['order' => $this->order])
+        ->set('showSendReceipt', true)
+        ->set('email', 'guest@example.com')
+        ->call('sendReceipt')
+        ->assertHasErrors('email')
+        ->assertSee('Gmail could not send this receipt.')
+        ->assertSet('showSendReceipt', true)
+        ->assertSet('receiptSentTo', null);
 });
 
 test('the receipt email names the bill and attaches the pdf', function () {
@@ -502,7 +524,13 @@ test('the receipt email names the bill and attaches the pdf', function () {
 
     $mail->assertSeeInHtml('#1000000001');
     $mail->assertSeeInHtml('Latte');
-    expect($mail->attachments()[0]->as)->toBe('receipt-1000000001.pdf');
+    $attachment = $mail->attachments()[0];
+    // attachWith() hands back the raw bytes of an attachment built with fromData().
+    $pdf = $attachment->attachWith(fn () => null, fn (Closure $data) => $data());
+
+    expect($attachment->as)->toBe('receipt-1000000001.pdf')
+        ->and($attachment->mime)->toBe('application/pdf')
+        ->and($pdf)->toStartWith('%PDF');
 });
 
 test('the success page is not found for an order that is still open', function () {

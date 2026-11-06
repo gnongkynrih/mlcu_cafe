@@ -1,3 +1,8 @@
+{{--
+    The body of the receipt email (built by app/Mail/PaymentReceipt.php).
+    $order comes from the Mailable's public $order property.
+    Email apps ignore most CSS files, so styles are written inline.
+--}}
 <!DOCTYPE html>
 <html lang="en">
 <head>
